@@ -27,3 +27,7 @@ export * from './constants/settlements.js';
 // Logic
 export * from './logic/economy.js';
 export * from './logic/population.js';
+export * from './logic/hex-utils.js';
+export * from './logic/visibility.js';
+export * from './logic/supply.js';
+export * from './logic/pathfinding.js';

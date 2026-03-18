@@ -1,25 +1,27 @@
-import { useRef, useEffect, useCallback } from 'react';
-import { Application, Container, Graphics } from 'pixi.js';
+import { useRef, useEffect } from 'react';
+import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
 import { useStore } from '../../store/index.js';
 import {
-  hexToPixel, hexCorners, roundHex, pixelToHex,
+  hexToPixel, hexCorners, roundHex, pixelToHex, hexEdgeMidpoints,
   TERRAIN_COLORS, TERRAIN_COLORS_SELECTED, HEX_SIZE,
 } from './hex-layout.js';
 
 /**
  * PixiJS hex map renderer.
- * Renders terrain-colored hexagons, supports pan/zoom/click.
- * Tab overlays sit on top in React DOM.
+ * Renders terrain-colored hexagons with fog of war, rivers,
+ * settlement markers, army icons. Supports pan/zoom/click.
  */
 export function MapCanvas() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const worldRef = useRef<Container | null>(null);
   const hexes = useStore(s => s.hexes);
+  const settlements = useStore(s => s.settlements);
+  const armies = useStore(s => s.armies);
+  const players = useStore(s => s.players);
   const selectedHex = useStore(s => s.selectedHex);
   const setSelectedHex = useStore(s => s.setSelectedHex);
 
-  // Store callbacks in refs so we can use them in the PixiJS event loop
   const selectedHexRef = useRef(selectedHex);
   selectedHexRef.current = selectedHex;
   const setSelectedHexRef = useRef(setSelectedHex);
@@ -48,12 +50,10 @@ export function MapCanvas() {
       container.appendChild(app.canvas);
       appRef.current = app;
 
-      // World container (holds all hexes, can be panned/zoomed)
       const world = new Container();
       app.stage.addChild(world);
       worldRef.current = world;
 
-      // Center the world initially
       world.x = container.clientWidth / 2;
       world.y = container.clientHeight / 2;
 
@@ -78,7 +78,6 @@ export function MapCanvas() {
         const dx = Math.abs(e.clientX - dragStart.x);
         const dy = Math.abs(e.clientY - dragStart.y);
 
-        // If barely moved, treat as click
         if (dx < 5 && dy < 5) {
           const rect = app.canvas.getBoundingClientRect();
           const worldX = (e.clientX - rect.left - world.x) / world.scale.x;
@@ -96,7 +95,6 @@ export function MapCanvas() {
         const factor = e.deltaY > 0 ? 0.9 : 1.1;
         const newScale = Math.min(3, Math.max(0.3, world.scale.x * factor));
 
-        // Zoom towards cursor
         const rect = app.canvas.getBoundingClientRect();
         const cx = e.clientX - rect.left;
         const cy = e.clientY - rect.top;
@@ -123,31 +121,75 @@ export function MapCanvas() {
     const world = worldRef.current;
     if (!world) return;
 
-    // Clear existing hex graphics
     world.removeChildren();
 
     const corners = hexCorners();
+    const edgeMidpoints = hexEdgeMidpoints();
+
+    // Build lookup maps for settlements and armies
+    const settlementByHex = new Map<string, any>();
+    for (const s of settlements) {
+      const key = `${(s as any).hexQ},${(s as any).hexR}`;
+      settlementByHex.set(key, s);
+    }
+
+    const armiesByHex = new Map<string, any[]>();
+    for (const a of armies) {
+      const key = `${(a as any).hexQ},${(a as any).hexR}`;
+      const list = armiesByHex.get(key) ?? [];
+      list.push(a);
+      armiesByHex.set(key, list);
+    }
+
+    // Player color lookup
+    const playerColors = new Map<string, string>();
+    for (const p of players) {
+      playerColors.set((p as any).id, (p as any).color);
+    }
 
     for (const hex of hexes) {
-      const h = hex as { q: number; r: number; terrain: string; ownerId?: string | null };
+      const h = hex as any;
       const pos = hexToPixel(h.q, h.r);
+      const fogState = h.fogState ?? 'full_vision';
 
       const g = new Graphics();
 
       // Determine color
       const isSelected = selectedHex && selectedHex.q === h.q && selectedHex.r === h.r;
       const colorMap = isSelected ? TERRAIN_COLORS_SELECTED : TERRAIN_COLORS;
-      const fillColor = colorMap[h.terrain] ?? 0xCCCCCC;
+      let fillColor = colorMap[h.terrain] ?? 0xCCCCCC;
 
       // Draw hex polygon
       g.poly(corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y })));
-      g.fill({ color: fillColor });
+      g.fill({ color: fillColor, alpha: fogState === 'soft_fog' ? 0.5 : 1.0 });
       g.stroke({ color: 0x8b7355, width: 1 });
+
+      // Soft fog overlay (dim)
+      if (fogState === 'soft_fog') {
+        g.poly(corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y })));
+        g.fill({ color: 0x000000, alpha: 0.25 });
+      }
 
       // Owner border
       if (h.ownerId) {
+        const ownerColor = playerColors.get(h.ownerId);
+        const borderColor = ownerColor ? parseInt(ownerColor.replace('#', ''), 16) : 0x2c1810;
         g.poly(corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y })));
-        g.stroke({ color: 0x2c1810, width: 2 });
+        g.stroke({ color: borderColor, width: 2, alpha: 0.7 });
+      }
+
+      // River edges
+      if (h.riverEdges?.length > 0) {
+        const dirIndex: Record<string, number> = { ne: 0, e: 1, se: 2, sw: 3, w: 4, nw: 5 };
+        for (const edge of h.riverEdges as string[]) {
+          const idx = dirIndex[edge];
+          if (idx === undefined) continue;
+          const c1 = corners[idx];
+          const c2 = corners[(idx + 1) % 6];
+          g.moveTo(c1.x + pos.x, c1.y + pos.y);
+          g.lineTo(c2.x + pos.x, c2.y + pos.y);
+          g.stroke({ color: 0x4488CC, width: 3 });
+        }
       }
 
       // Selection highlight
@@ -157,13 +199,47 @@ export function MapCanvas() {
       }
 
       world.addChild(g);
+
+      // Settlement marker
+      const hexKey = `${h.q},${h.r}`;
+      const settlement = settlementByHex.get(hexKey);
+      if (settlement) {
+        const sg = new Graphics();
+        const tierSize: Record<string, number> = {
+          hamlet: 6, village: 8, town: 10, city: 13, metropolis: 16,
+        };
+        const size = tierSize[settlement.tier] ?? 8;
+        sg.rect(pos.x - size / 2, pos.y - size / 2 - 4, size, size);
+        sg.fill({ color: settlement.isCapital ? 0xB8860B : 0x8B4513 });
+        sg.stroke({ color: 0x2c1810, width: 1 });
+        world.addChild(sg);
+      }
+
+      // Army markers
+      const hexArmies = armiesByHex.get(hexKey);
+      if (hexArmies) {
+        for (let i = 0; i < hexArmies.length; i++) {
+          const army = hexArmies[i];
+          const ag = new Graphics();
+          const ax = pos.x + (i * 10) - 5;
+          const ay = pos.y + 8;
+          const ownerColor = playerColors.get(army.ownerId);
+          const color = ownerColor ? parseInt(ownerColor.replace('#', ''), 16) : 0x666666;
+
+          // Small shield shape
+          ag.circle(ax, ay, 5);
+          ag.fill({ color });
+          ag.stroke({ color: 0x2c1810, width: 1 });
+          world.addChild(ag);
+        }
+      }
     }
 
     // If no hexes from server, render a demo map
     if (hexes.length === 0) {
       renderDemoMap(world, corners);
     }
-  }, [hexes, selectedHex]);
+  }, [hexes, settlements, armies, players, selectedHex]);
 
   return <div ref={canvasRef} style={{ width: '100%', height: '100%' }} />;
 }

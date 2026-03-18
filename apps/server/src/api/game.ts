@@ -5,6 +5,7 @@ import { STARTING_CONDITIONS } from '@kingdoms/shared';
 import { SETTLEMENT_TIERS } from '@kingdoms/shared';
 import { v4 as uuid } from 'uuid';
 import { startTurn } from '../game/turn-manager.js';
+import { buildFilteredState } from '../game/fog-filter.js';
 
 export const gameRouter: RouterType = Router();
 
@@ -230,16 +231,10 @@ gameRouter.get('/:slug/state', async (req, res) => {
     armyUnits[a.id] = units;
   }
 
-  // TODO: Apply fog-of-war filtering in Phase 3
-  // For now, return full state (no fog)
-
-  res.json({
-    game,
-    player: {
-      ...player,
-      // Don't leak session token
-      sessionToken: undefined,
-    },
+  // Apply fog-of-war filtering
+  const rawState = {
+    game: game as Record<string, unknown>,
+    player: player as Record<string, unknown>,
     players: gamePlayers.map(p => ({
       id: p.id,
       displayName: p.displayName,
@@ -251,15 +246,21 @@ gameRouter.get('/:slug/state', async (req, res) => {
       isEliminated: p.isEliminated,
       isSpectator: p.isSpectator,
       hasSubmitted: p.hasSubmitted,
-    })),
-    hexes,
+      // Include own player's private data
+      ...(p.id === player.id ? { gold: p.gold, stability: p.stability, taxRate: p.taxRate } : {}),
+    })) as Record<string, unknown>[],
+    hexes: hexes as Record<string, unknown>[],
     settlements: allSettlements.map(s => ({
       ...s,
       buildings: settlementBuildings[s.id] ?? [],
-    })),
+    })) as Array<Record<string, unknown> & { buildings?: unknown[] }>,
     armies: allArmies.map(a => ({
       ...a,
       units: armyUnits[a.id] ?? [],
-    })),
-  });
+    })) as Array<Record<string, unknown> & { units?: unknown[] }>,
+  };
+
+  const filtered = await buildFilteredState(game.id, player.id, rawState);
+
+  res.json(filtered);
 });

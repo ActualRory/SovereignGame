@@ -13,9 +13,12 @@ import {
   calculatePopGrowth, calculateStarvation,
   BUILDINGS, COST_TIERS, TECH_TREE, SETTLEMENT_TIERS,
   STABILITY_PER_TURN,
+  getNextTier, TIER_ORDER,
+  hexNeighbors, hexKey,
+  updateArmySupply, calculateHexSupply, ATTRITION_STRENGTH_LOSS,
   type TurnOrders, emptyOrders,
   type TaxRate, type BuildingType, type ResourceType, type SettlementTier,
-  type Season,
+  type TerrainType, type Season,
 } from '@kingdoms/shared';
 
 export interface TurnResult {
@@ -330,6 +333,175 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   // ══════════════════════════════════════════════
 
   // ══════════════════════════════════════════════
+  // STEP 6: New Settlements & Settlement Upgrades
+  // ══════════════════════════════════════════════
+  const allHexes = await db.select().from(schema.gameHexes)
+    .where(eq(schema.gameHexes.gameId, gameId));
+
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
+
+    // ── Settlement upgrades ──
+    for (const upgradeOrder of orders.settlementUpgrades) {
+      const [settlement] = await db.select().from(schema.settlements)
+        .where(eq(schema.settlements.id, upgradeOrder.settlementId));
+      if (!settlement || settlement.ownerId !== player.id) continue;
+
+      const currentTier = settlement.tier as SettlementTier;
+      const nextTier = getNextTier(currentTier);
+      if (!nextTier) continue; // Already max tier
+
+      // Check pop cap reached
+      if (settlement.population < settlement.popCap) continue;
+
+      const upgradeCost = SETTLEMENT_TIERS[currentTier].upgradeCost;
+      const playerRow = updatedPlayers.find(p => p.id === player.id);
+      if (!playerRow || playerRow.gold < upgradeCost.gold) continue;
+
+      // Check resource costs from settlement storage
+      const storage = { ...(settlement.storage as Record<string, number>) };
+      let hasMaterials = true;
+      for (const [resource, amount] of Object.entries(upgradeCost.resources)) {
+        if ((storage[resource] ?? 0) < (amount ?? 0)) { hasMaterials = false; break; }
+      }
+      if (!hasMaterials) continue;
+
+      // Deduct costs
+      await db.update(schema.players)
+        .set({ gold: playerRow.gold - upgradeCost.gold })
+        .where(eq(schema.players.id, player.id));
+
+      for (const [resource, amount] of Object.entries(upgradeCost.resources)) {
+        storage[resource] = (storage[resource] ?? 0) - (amount ?? 0);
+      }
+
+      const nextTierDef = SETTLEMENT_TIERS[nextTier];
+      await db.update(schema.settlements)
+        .set({
+          tier: nextTier,
+          popCap: nextTierDef.popCap,
+          storage,
+        })
+        .where(eq(schema.settlements.id, settlement.id));
+
+      events.push({
+        type: 'settlement_upgraded',
+        description: `${settlement.name} upgraded to ${nextTier}`,
+        playerIds: [player.id],
+      });
+    }
+
+    // ── New settlements ──
+    for (const newSettlement of orders.newSettlements) {
+      // Validate hex is owned by player
+      const targetHex = allHexes.find(
+        h => h.q === newSettlement.hexQ && h.r === newSettlement.hexR && h.ownerId === player.id
+      );
+      if (!targetHex) continue;
+
+      // Validate no existing settlement on this hex
+      if (targetHex.settlementId) continue;
+
+      // Validate no adjacent settlements
+      const neighbors = hexNeighbors({ q: newSettlement.hexQ, r: newSettlement.hexR });
+      const hasAdjacentSettlement = neighbors.some(n =>
+        allHexes.some(h => h.q === n.q && h.r === n.r && h.settlementId != null)
+      );
+      if (hasAdjacentSettlement) continue;
+
+      // Cost: hamlet upgrade cost (gold + resources from nearest settlement storage)
+      const hamletCost = SETTLEMENT_TIERS.hamlet.upgradeCost;
+      const playerRow = updatedPlayers.find(p => p.id === player.id);
+      if (!playerRow || playerRow.gold < hamletCost.gold) continue;
+
+      // Deduct gold
+      await db.update(schema.players)
+        .set({ gold: playerRow.gold - hamletCost.gold })
+        .where(eq(schema.players.id, player.id));
+
+      // Create the hamlet settlement
+      const [settlement] = await db.insert(schema.settlements).values({
+        gameId,
+        hexQ: newSettlement.hexQ,
+        hexR: newSettlement.hexR,
+        ownerId: player.id,
+        name: newSettlement.name || `${player.countryName} Settlement`,
+        tier: 'hamlet' as SettlementTier,
+        population: 50,
+        popCap: SETTLEMENT_TIERS.hamlet.popCap,
+        isCapital: false,
+        storage: {},
+      }).returning();
+
+      // Link to hex
+      await db.update(schema.gameHexes)
+        .set({ settlementId: settlement.id })
+        .where(and(
+          eq(schema.gameHexes.gameId, gameId),
+          eq(schema.gameHexes.q, newSettlement.hexQ),
+          eq(schema.gameHexes.r, newSettlement.hexR),
+        ));
+
+      events.push({
+        type: 'settlement_founded',
+        description: `${player.countryName} founded ${settlement.name}`,
+        playerIds: [player.id],
+      });
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 12: Hex Claiming (hold 1 Major Turn = 8 minor turns)
+  // ══════════════════════════════════════════════
+  const hexesForClaiming = await db.select().from(schema.gameHexes)
+    .where(eq(schema.gameHexes.gameId, gameId));
+
+  for (const hex of hexesForClaiming) {
+    if (hex.claimStartedTurn && !hex.ownerId) {
+      // Check if 8 turns have passed (1 Major Turn)
+      if (turnNumber - hex.claimStartedTurn >= 8) {
+        // Find army that started the claim — check if any army from the claimant is still there
+        const armiesOnHex = await db.select().from(schema.armies)
+          .where(and(
+            eq(schema.armies.gameId, gameId),
+            eq(schema.armies.hexQ, hex.q),
+            eq(schema.armies.hexR, hex.r),
+          ));
+
+        if (armiesOnHex.length > 0) {
+          const claimingArmy = armiesOnHex[0];
+          await db.update(schema.gameHexes)
+            .set({ ownerId: claimingArmy.ownerId, claimStartedTurn: null })
+            .where(eq(schema.gameHexes.id, hex.id));
+
+          const claimingPlayer = activePlayers.find(p => p.id === claimingArmy.ownerId);
+          events.push({
+            type: 'hex_claimed',
+            description: `${claimingPlayer?.countryName ?? 'Unknown'} claimed hex (${hex.q},${hex.r})`,
+            playerIds: [claimingArmy.ownerId],
+          });
+        }
+      }
+    }
+
+    // Start claiming if army is on unclaimed hex
+    if (!hex.ownerId && !hex.claimStartedTurn) {
+      const armiesOnHex = await db.select().from(schema.armies)
+        .where(and(
+          eq(schema.armies.gameId, gameId),
+          eq(schema.armies.hexQ, hex.q),
+          eq(schema.armies.hexR, hex.r),
+        ));
+
+      if (armiesOnHex.length > 0) {
+        await db.update(schema.gameHexes)
+          .set({ claimStartedTurn: turnNumber })
+          .where(eq(schema.gameHexes.id, hex.id));
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════
   // STEP 13: Population Growth
   // ══════════════════════════════════════════════
   const settlementsAfter = await db.select().from(schema.settlements)
@@ -398,6 +570,73 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     await db.update(schema.players)
       .set({ stability: newStability })
       .where(eq(schema.players.id, player.id));
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 14: Supply Consumption + Attrition
+  // ══════════════════════════════════════════════
+  const armiesForSupply = await db.select().from(schema.armies)
+    .where(eq(schema.armies.gameId, gameId));
+
+  const latestHexes = await db.select().from(schema.gameHexes)
+    .where(eq(schema.gameHexes.gameId, gameId));
+
+  const latestSettlements = await db.select().from(schema.settlements)
+    .where(eq(schema.settlements.gameId, gameId));
+
+  for (const army of armiesForSupply) {
+    const hex = latestHexes.find(h => h.q === army.hexQ && h.r === army.hexR);
+    if (!hex) continue;
+
+    const terrain = (hex.terrain ?? 'plains') as TerrainType;
+    const isInFriendlyTerritory = hex.ownerId === army.ownerId;
+
+    // Friendly settlements for supply calculation
+    const friendlySettlements = latestSettlements
+      .filter(s => s.ownerId === army.ownerId)
+      .map(s => ({ q: s.hexQ, r: s.hexR }));
+
+    const hexSupply = calculateHexSupply(
+      { q: army.hexQ, r: army.hexR },
+      terrain,
+      friendlySettlements,
+    );
+
+    const { newSupply, isAttriting } = updateArmySupply(
+      army.supplyBank,
+      hexSupply,
+      isInFriendlyTerritory,
+    );
+
+    await db.update(schema.armies)
+      .set({ supplyBank: newSupply })
+      .where(eq(schema.armies.id, army.id));
+
+    // Apply attrition to units
+    if (isAttriting) {
+      const units = await db.select().from(schema.units)
+        .where(eq(schema.units.armyId, army.id));
+
+      for (const unit of units) {
+        if (unit.state === 'destroyed') continue;
+        const newStrength = Math.max(0, unit.strengthPct - ATTRITION_STRENGTH_LOSS);
+        const newState = newStrength <= 0 ? 'destroyed' as const
+          : newStrength <= 25 ? 'broken' as const
+          : newStrength <= 50 ? 'depleted' as const
+          : unit.state;
+
+        await db.update(schema.units)
+          .set({ strengthPct: newStrength, state: newState })
+          .where(eq(schema.units.id, unit.id));
+      }
+
+      const ownerPlayer = activePlayers.find(p => p.id === army.ownerId);
+      events.push({
+        type: 'army_attrition',
+        description: `${army.name} is suffering from supply attrition`,
+        playerIds: [army.ownerId],
+      });
+    }
   }
 
   // ══════════════════════════════════════════════

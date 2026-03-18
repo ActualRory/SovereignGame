@@ -56,6 +56,18 @@ export function hexCorners(): { x: number; y: number }[] {
   return corners;
 }
 
+/** Get the 6 edge midpoints of a flat-top hex centered at (0, 0). */
+export function hexEdgeMidpoints(): { x: number; y: number }[] {
+  const corners = hexCorners();
+  const midpoints: { x: number; y: number }[] = [];
+  for (let i = 0; i < 6; i++) {
+    const c1 = corners[i];
+    const c2 = corners[(i + 1) % 6];
+    midpoints.push({ x: (c1.x + c2.x) / 2, y: (c1.y + c2.y) / 2 });
+  }
+  return midpoints;
+}
+
 /** Terrain color mapping. */
 export const TERRAIN_COLORS: Record<string, number> = {
   plains:    0xC8D87E,

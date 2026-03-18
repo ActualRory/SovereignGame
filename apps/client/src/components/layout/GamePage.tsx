@@ -6,6 +6,7 @@ import { BottomBar } from './BottomBar.js';
 import { TabOverlay } from './TabOverlay.js';
 import { TurnBar } from './TurnBar.js';
 import { MapCanvas } from '../map/MapCanvas.js';
+import { HexDetailPanel } from '../panels/HexDetailPanel.js';
 
 export function GamePage() {
   const { slug } = useParams<{ slug: string }>();
@@ -64,12 +65,15 @@ export function GamePage() {
     };
   }, [slug, fetchState]);
 
+  const activeTab = useStore(s => s.activeTab);
+
   return (
     <div className="game-layout">
       <div className="game-map-area">
         <MapCanvas />
         <TurnBar />
         <TabOverlay />
+        {!activeTab && <HexDetailPanel />}
       </div>
       <BottomBar />
     </div>

@@ -3,7 +3,12 @@
     "allow": [
       "Bash(pnpm approve-builds:*)",
       "Bash(pnpm install:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(docker compose:*)",
+      "Bash(pnpm config:*)",
+      "Bash(pnpm rebuild:*)",
+      "Bash(npx drizzle-kit:*)",
+      "Bash(pnpm dev:*)"
     ]
   }
 }

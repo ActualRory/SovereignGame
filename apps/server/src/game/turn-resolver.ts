@@ -218,7 +218,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     // Deficit stability hit
     if (newGold < 0) {
       const currentStability = player.stability;
-      const newStability = Math.max(0, currentStability + STABILITY_PER_TURN.gold_deficit);
+      const newStability = Math.round(Math.max(0, currentStability + STABILITY_PER_TURN.gold_deficit));
       await db.update(schema.players)
         .set({ stability: newStability })
         .where(eq(schema.players.id, player.id));
@@ -566,7 +566,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       stabilityChange += STABILITY_PER_TURN.passive_recovery;
     }
 
-    const newStability = Math.max(0, Math.min(100, player.stability + stabilityChange));
+    const newStability = Math.round(Math.max(0, Math.min(100, player.stability + stabilityChange)));
     await db.update(schema.players)
       .set({ stability: newStability })
       .where(eq(schema.players.id, player.id));

@@ -1,9 +1,9 @@
 import { useRef, useEffect } from 'react';
-import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
+import { Application, Container, Graphics } from 'pixi.js';
 import { useStore } from '../../store/index.js';
 import {
-  hexToPixel, hexCorners, roundHex, pixelToHex, hexEdgeMidpoints,
-  TERRAIN_COLORS, TERRAIN_COLORS_SELECTED, HEX_SIZE,
+  hexToPixel, hexCorners, roundHex, pixelToHex,
+  TERRAIN_COLORS, TERRAIN_COLORS_SELECTED,
 } from './hex-layout.js';
 
 /**
@@ -124,9 +124,15 @@ export function MapCanvas() {
     world.removeChildren();
 
     const corners = hexCorners();
-    const edgeMidpoints = hexEdgeMidpoints();
 
-    // Build lookup maps for settlements and armies
+    // Layered containers so borders/rivers always render on top of fills
+    const terrainLayer = new Container();
+    const borderLayer = new Container();
+    const riverLayer = new Container();
+    const iconLayer = new Container();
+    world.addChild(terrainLayer, borderLayer, riverLayer, iconLayer);
+
+    // Build lookup maps
     const settlementByHex = new Map<string, any>();
     for (const s of settlements) {
       const key = `${(s as any).hexQ},${(s as any).hexR}`;
@@ -141,7 +147,6 @@ export function MapCanvas() {
       armiesByHex.set(key, list);
     }
 
-    // Player color lookup
     const playerColors = new Map<string, string>();
     for (const p of players) {
       playerColors.set((p as any).id, (p as any).color);
@@ -151,72 +156,73 @@ export function MapCanvas() {
       const h = hex as any;
       const pos = hexToPixel(h.q, h.r);
       const fogState = h.fogState ?? 'full_vision';
-
-      const g = new Graphics();
-
-      // Determine color
       const isSelected = selectedHex && selectedHex.q === h.q && selectedHex.r === h.r;
       const colorMap = isSelected ? TERRAIN_COLORS_SELECTED : TERRAIN_COLORS;
-      let fillColor = colorMap[h.terrain] ?? 0xCCCCCC;
+      const fillColor = colorMap[h.terrain] ?? 0xCCCCCC;
+      const offsetCorners = corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y }));
 
-      // Draw hex polygon
-      g.poly(corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y })));
-      g.fill({ color: fillColor, alpha: fogState === 'soft_fog' ? 0.5 : 1.0 });
-      g.stroke({ color: 0x8b7355, width: 1 });
+      // ── Layer 1: Terrain fill ──
+      const tg = new Graphics();
+      tg.poly(offsetCorners);
+      tg.fill({ color: fillColor, alpha: fogState === 'soft_fog' ? 0.5 : 1.0 });
+      tg.stroke({ color: 0x8b7355, width: 1 });
 
-      // Soft fog overlay (dim)
       if (fogState === 'soft_fog') {
-        g.poly(corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y })));
-        g.fill({ color: 0x000000, alpha: 0.25 });
+        tg.poly(offsetCorners);
+        tg.fill({ color: 0x000000, alpha: 0.25 });
       }
+      terrainLayer.addChild(tg);
 
-      // Owner border
+      // ── Layer 2: Owner borders ──
       if (h.ownerId) {
+        const bg = new Graphics();
         const ownerColor = playerColors.get(h.ownerId);
         const borderColor = ownerColor ? parseInt(ownerColor.replace('#', ''), 16) : 0x2c1810;
-        g.poly(corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y })));
-        g.stroke({ color: borderColor, width: 2, alpha: 0.7 });
+        bg.poly(offsetCorners);
+        bg.stroke({ color: borderColor, width: 2.5, alpha: 0.8 });
+        borderLayer.addChild(bg);
       }
 
-      // River edges
+      // Selection highlight (on border layer)
+      if (isSelected) {
+        const sg = new Graphics();
+        sg.poly(offsetCorners);
+        sg.stroke({ color: 0xFFD700, width: 3 });
+        borderLayer.addChild(sg);
+      }
+
+      // ── Layer 3: River edges ──
       if (h.riverEdges?.length > 0) {
+        const rg = new Graphics();
         const dirIndex: Record<string, number> = { ne: 0, e: 1, se: 2, sw: 3, w: 4, nw: 5 };
         for (const edge of h.riverEdges as string[]) {
           const idx = dirIndex[edge];
           if (idx === undefined) continue;
-          const c1 = corners[idx];
-          const c2 = corners[(idx + 1) % 6];
-          g.moveTo(c1.x + pos.x, c1.y + pos.y);
-          g.lineTo(c2.x + pos.x, c2.y + pos.y);
-          g.stroke({ color: 0x4488CC, width: 3 });
+          const c1 = offsetCorners[idx];
+          const c2 = offsetCorners[(idx + 1) % 6];
+          rg.moveTo(c1.x, c1.y);
+          rg.lineTo(c2.x, c2.y);
+          rg.stroke({ color: 0x4488CC, width: 3.5 });
         }
+        riverLayer.addChild(rg);
       }
 
-      // Selection highlight
-      if (isSelected) {
-        g.poly(corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y })));
-        g.stroke({ color: 0xFFD700, width: 3 });
-      }
-
-      world.addChild(g);
-
-      // Settlement marker
-      const hexKey = `${h.q},${h.r}`;
-      const settlement = settlementByHex.get(hexKey);
+      // ── Layer 4: Settlement + army icons ──
+      const hexK = `${h.q},${h.r}`;
+      const settlement = settlementByHex.get(hexK);
       if (settlement) {
-        const sg = new Graphics();
+        const ig = new Graphics();
         const tierSize: Record<string, number> = {
           hamlet: 6, village: 8, town: 10, city: 13, metropolis: 16,
         };
         const size = tierSize[settlement.tier] ?? 8;
-        sg.rect(pos.x - size / 2, pos.y - size / 2 - 4, size, size);
-        sg.fill({ color: settlement.isCapital ? 0xB8860B : 0x8B4513 });
-        sg.stroke({ color: 0x2c1810, width: 1 });
-        world.addChild(sg);
+        ig.rect(pos.x - size / 2, pos.y - size / 2 - 4, size, size);
+        ig.fill({ color: settlement.isCapital ? 0xB8860B : 0x8B4513 });
+        ig.stroke({ color: 0x2c1810, width: 1 });
+        iconLayer.addChild(ig);
       }
 
-      // Army markers
-      const hexArmies = armiesByHex.get(hexKey);
+      const hexArmies = armiesByHex.get(hexK);
       if (hexArmies) {
         for (let i = 0; i < hexArmies.length; i++) {
           const army = hexArmies[i];
@@ -225,19 +231,16 @@ export function MapCanvas() {
           const ay = pos.y + 8;
           const ownerColor = playerColors.get(army.ownerId);
           const color = ownerColor ? parseInt(ownerColor.replace('#', ''), 16) : 0x666666;
-
-          // Small shield shape
           ag.circle(ax, ay, 5);
           ag.fill({ color });
           ag.stroke({ color: 0x2c1810, width: 1 });
-          world.addChild(ag);
+          iconLayer.addChild(ag);
         }
       }
     }
 
-    // If no hexes from server, render a demo map
     if (hexes.length === 0) {
-      renderDemoMap(world, corners);
+      renderDemoMap(terrainLayer, corners);
     }
   }, [hexes, settlements, armies, players, selectedHex]);
 

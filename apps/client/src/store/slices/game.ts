@@ -1,5 +1,14 @@
 import type { StateCreator } from 'zustand';
 
+export interface GameNotification {
+  id: string;
+  type: string;
+  turn: number;
+  message: string;
+  data?: Record<string, unknown>;
+  isRead: boolean;
+}
+
 export interface GameState {
   game: Record<string, unknown> | null;
   player: Record<string, unknown> | null;
@@ -13,11 +22,16 @@ export interface GameState {
   letters: Record<string, unknown>[];
   diplomacyRelations: Record<string, unknown>[];
   tradeAgreements: Record<string, unknown>[];
+  notifications: GameNotification[];
+  eventLog: Record<string, unknown>[];
 }
 
 export interface GameSlice extends GameState {
   setGameState: (state: Partial<GameState>) => void;
   clearGameState: () => void;
+  addNotification: (notification: GameNotification) => void;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
 }
 
 const initialState: GameState = {
@@ -33,10 +47,21 @@ const initialState: GameState = {
   letters: [],
   diplomacyRelations: [],
   tradeAgreements: [],
+  notifications: [],
+  eventLog: [],
 };
 
 export const createGameSlice: StateCreator<GameSlice> = (set) => ({
   ...initialState,
   setGameState: (state) => set(state),
   clearGameState: () => set(initialState),
+  addNotification: (notification) => set((s) => ({
+    notifications: [notification, ...s.notifications],
+  })),
+  markNotificationRead: (id) => set((s) => ({
+    notifications: s.notifications.map(n => n.id === id ? { ...n, isRead: true } : n),
+  })),
+  markAllNotificationsRead: () => set((s) => ({
+    notifications: s.notifications.map(n => ({ ...n, isRead: true })),
+  })),
 });

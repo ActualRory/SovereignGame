@@ -17,11 +17,13 @@ import {
   hexNeighbors, hexKey, hexDistance, hasRiverBetween,
   updateArmySupply, calculateHexSupply, ATTRITION_STRENGTH_LOSS,
   resolveCombat, resolveSiegeAssault,
+  calculateStabilityTurn, resolveWinterRoll, WINTER_ROLL_BONUS,
+  getStabilityBand,
   type CombatInput, type ArmySide, type CombatUnitInput, type CombatResult,
   type TurnOrders, emptyOrders,
   type TaxRate, type BuildingType, type ResourceType, type SettlementTier,
   type TerrainType, type UnitType, type UnitState, type Veterancy, type UnitPosition,
-  type HexDirection, type Season,
+  type HexDirection, type Season, type StabilityEventType,
 } from '@kingdoms/shared';
 
 export interface TurnResult {
@@ -1245,42 +1247,13 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     }
   }
 
-  // ══════════════════════════════════════════════
-  // STEP 15 (partial): Stability from tax rate
-  // ══════════════════════════════════════════════
-  for (const player of activePlayers) {
-    const taxRate = (updatedPlayers.find(p => p.id === player.id)?.taxRate ?? 'low') as TaxRate;
-    let stabilityChange = 0;
-
-    if (taxRate === 'low') stabilityChange = STABILITY_PER_TURN.tax_low;
-    else if (taxRate === 'fair') stabilityChange = STABILITY_PER_TURN.tax_fair;
-    else stabilityChange = STABILITY_PER_TURN.tax_cruel;
-
-    // Check food shortage across all settlements
-    const playerSettlements = settlementsAfter.filter(s => s.ownerId === player.id);
-    const hasShortage = playerSettlements.some(s => {
-      const st = s.storage as Record<string, number>;
-      return (st['food'] ?? 0) <= 0;
-    });
-    if (hasShortage) stabilityChange += STABILITY_PER_TURN.food_shortage;
-
-    // Passive recovery if no negative factors
-    if (stabilityChange >= 0 && player.stability < 100) {
-      stabilityChange += STABILITY_PER_TURN.passive_recovery;
-    }
-
-    const newStability = Math.round(Math.max(0, Math.min(100, player.stability + stabilityChange)));
-    await db.update(schema.players)
-      .set({ stability: newStability })
-      .where(eq(schema.players.id, player.id));
-  }
+  // Fetch armies for use in Steps 14-16
+  const armiesForSupply = await db.select().from(schema.armies)
+    .where(eq(schema.armies.gameId, gameId));
 
   // ══════════════════════════════════════════════
   // STEP 14: Supply Consumption + Attrition
   // ══════════════════════════════════════════════
-  const armiesForSupply = await db.select().from(schema.armies)
-    .where(eq(schema.armies.gameId, gameId));
-
   const latestHexes = await db.select().from(schema.gameHexes)
     .where(eq(schema.gameHexes.gameId, gameId));
 
@@ -1294,7 +1267,6 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     const terrain = (hex.terrain ?? 'plains') as TerrainType;
     const isInFriendlyTerritory = hex.ownerId === army.ownerId;
 
-    // Friendly settlements for supply calculation
     const friendlySettlements = latestSettlements
       .filter(s => s.ownerId === army.ownerId)
       .map(s => ({ q: s.hexQ, r: s.hexR }));
@@ -1315,7 +1287,6 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       .set({ supplyBank: newSupply })
       .where(eq(schema.armies.id, army.id));
 
-    // Apply attrition to units
     if (isAttriting) {
       const units = await db.select().from(schema.units)
         .where(eq(schema.units.armyId, army.id));
@@ -1333,12 +1304,213 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
           .where(eq(schema.units.id, unit.id));
       }
 
-      const ownerPlayer = activePlayers.find(p => p.id === army.ownerId);
       events.push({
         type: 'army_attrition',
         description: `${army.name} is suffering from supply attrition`,
         playerIds: [army.ownerId],
       });
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 15: Stability Calculation
+  // ══════════════════════════════════════════════
+  for (const player of activePlayers) {
+    const taxRate = (updatedPlayers.find(p => p.id === player.id)?.taxRate ?? 'low') as TaxRate;
+    const playerSettlements = settlementsAfter.filter(s => s.ownerId === player.id);
+
+    const hasFoodShortage = playerSettlements.some(s => {
+      const st = s.storage as Record<string, number>;
+      return (st['food'] ?? 0) <= 0;
+    });
+    const hasGoldDeficit = (updatedPlayers.find(p => p.id === player.id)?.gold ?? 0) < 0;
+
+    const stabilityResult = calculateStabilityTurn({
+      currentStability: player.stability,
+      taxRate,
+      hasGoldDeficit,
+      hasFoodShortage,
+    });
+
+    // Apply stability band consequences (uneasy+ = reduced pop growth already handled by band check)
+    const band = getStabilityBand(stabilityResult.newStability);
+
+    // Unstable+ bands: desertion — random units lose 5% strength
+    if (band === 'unstable' || band === 'crisis' || band === 'collapse') {
+      const playerArmies = armiesForSupply.filter(a => a.ownerId === player.id);
+      for (const army of playerArmies) {
+        const units = await db.select().from(schema.units).where(eq(schema.units.armyId, army.id));
+        for (const unit of units) {
+          if (unit.state === 'destroyed') continue;
+          // 10% chance per unit per turn of losing 5% strength
+          if (Math.random() < 0.10) {
+            const newStr = Math.max(0, unit.strengthPct - 5);
+            const newState = newStr <= 0 ? 'destroyed' as const
+              : newStr <= 25 ? 'broken' as const
+              : newStr <= 50 ? 'depleted' as const
+              : unit.state;
+            await db.update(schema.units)
+              .set({ strengthPct: newStr, state: newState })
+              .where(eq(schema.units.id, unit.id));
+          }
+        }
+      }
+    }
+
+    await db.update(schema.players)
+      .set({ stability: stabilityResult.newStability })
+      .where(eq(schema.players.id, player.id));
+
+    if (stabilityResult.change !== 0) {
+      events.push({
+        type: 'stability_change',
+        description: `${player.countryName}: stability ${stabilityResult.change > 0 ? '+' : ''}${stabilityResult.change}% (now ${stabilityResult.newStability}%)`,
+        playerIds: [player.id],
+      });
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 16: Late Winter Seasonal d20 Roll
+  // ══════════════════════════════════════════════
+  if (season === 'late_winter') {
+    for (const player of activePlayers) {
+      const currentStability = (await db.select().from(schema.players).where(eq(schema.players.id, player.id)))[0]?.stability ?? player.stability;
+      const roll = Math.floor(Math.random() * 20) + 1; // 1-20
+      const winterResult = resolveWinterRoll({ stability: currentStability, roll });
+
+      if (winterResult.event) {
+        events.push({
+          type: 'winter_roll',
+          description: `${player.countryName} Late Winter roll: ${roll} — ${formatWinterEvent(winterResult.event)}`,
+          playerIds: [player.id],
+        });
+
+        // Apply event effects
+        let newStab = currentStability;
+
+        switch (winterResult.event) {
+          case 'stability_bonus':
+            newStab = Math.min(100, newStab + WINTER_ROLL_BONUS);
+            break;
+
+          case 'minor_unrest':
+            // Flavour only
+            break;
+
+          case 'riots': {
+            // -3% stability, 5% pop loss in random settlement
+            newStab = Math.max(0, newStab - 3);
+            const playerSettlements = settlementsAfter.filter(s => s.ownerId === player.id);
+            if (playerSettlements.length > 0) {
+              const target = playerSettlements[Math.floor(Math.random() * playerSettlements.length)];
+              const popLoss = Math.floor(target.population * 0.05);
+              await db.update(schema.settlements)
+                .set({ population: Math.max(10, target.population - popLoss) })
+                .where(eq(schema.settlements.id, target.id));
+            }
+            break;
+          }
+
+          case 'desertion': {
+            // 15% of units across all armies lose 20% strength
+            const playerArmies = armiesForSupply.filter(a => a.ownerId === player.id);
+            for (const army of playerArmies) {
+              const units = await db.select().from(schema.units).where(eq(schema.units.armyId, army.id));
+              for (const unit of units) {
+                if (unit.state === 'destroyed') continue;
+                if (Math.random() < 0.15) {
+                  const newStr = Math.max(0, unit.strengthPct - 20);
+                  const newState = newStr <= 0 ? 'destroyed' as const
+                    : newStr <= 25 ? 'broken' as const
+                    : newStr <= 50 ? 'depleted' as const
+                    : unit.state;
+                  await db.update(schema.units)
+                    .set({ strengthPct: newStr, state: newState })
+                    .where(eq(schema.units.id, unit.id));
+                }
+              }
+            }
+            break;
+          }
+
+          case 'mass_desertion': {
+            // 40% of units lose 30% strength + rebellion
+            const playerArmies = armiesForSupply.filter(a => a.ownerId === player.id);
+            for (const army of playerArmies) {
+              const units = await db.select().from(schema.units).where(eq(schema.units.armyId, army.id));
+              for (const unit of units) {
+                if (unit.state === 'destroyed') continue;
+                if (Math.random() < 0.40) {
+                  const newStr = Math.max(0, unit.strengthPct - 30);
+                  const newState = newStr <= 0 ? 'destroyed' as const
+                    : newStr <= 25 ? 'broken' as const
+                    : newStr <= 50 ? 'depleted' as const
+                    : unit.state;
+                  await db.update(schema.units)
+                    .set({ strengthPct: newStr, state: newState })
+                    .where(eq(schema.units.id, unit.id));
+                }
+              }
+            }
+            newStab = Math.max(0, newStab - 5);
+            break;
+          }
+
+          case 'rebellion': {
+            // Random non-capital settlement defects (ownership removed)
+            const playerSettlements = settlementsAfter.filter(s => s.ownerId === player.id && !s.isCapital);
+            if (playerSettlements.length > 0) {
+              const target = playerSettlements[Math.floor(Math.random() * playerSettlements.length)];
+              // Settlement becomes unowned (rebels control it)
+              await db.update(schema.settlements)
+                .set({ ownerId: player.id }) // stays with player but population drops 25%
+                .where(eq(schema.settlements.id, target.id));
+              const popLoss = Math.floor(target.population * 0.25);
+              await db.update(schema.settlements)
+                .set({ population: Math.max(10, target.population - popLoss) })
+                .where(eq(schema.settlements.id, target.id));
+              events.push({
+                type: 'rebellion',
+                description: `Rebellion in ${target.name}! Population decreased by ${popLoss}.`,
+                playerIds: [player.id],
+              });
+            }
+            newStab = Math.max(0, newStab - 5);
+            break;
+          }
+
+          case 'noble_defection': {
+            // A general defects (removed)
+            const generals = await db.select().from(schema.generals)
+              .where(and(eq(schema.generals.gameId, gameId), eq(schema.generals.ownerId, player.id)));
+            if (generals.length > 0) {
+              const target = generals[Math.floor(Math.random() * generals.length)];
+              // Remove general from any army
+              await db.update(schema.armies)
+                .set({ generalId: null })
+                .where(eq(schema.armies.generalId, target.id));
+              await db.delete(schema.generals).where(eq(schema.generals.id, target.id));
+              events.push({
+                type: 'noble_defection',
+                description: `General ${target.name} has defected from ${player.countryName}!`,
+                playerIds: [player.id],
+              });
+            }
+            break;
+          }
+
+          case 'settlement_defection':
+            // Handled same as rebellion for V1
+            break;
+        }
+
+        if (newStab !== currentStability) {
+          await db.update(schema.players)
+            .set({ stability: newStab })
+            .where(eq(schema.players.id, player.id));
+        }
+      }
     }
   }
 
@@ -1353,10 +1525,59 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     eventLog: events as any,
   });
 
-  // Check for game over (all players but one eliminated)
-  const alivePlayers = activePlayers.filter(p => !p.isEliminated);
+  // ══════════════════════════════════════════════
+  // STEP 17: Elimination + Victory Check
+  // ══════════════════════════════════════════════
+  const finalSettlements = await db.select().from(schema.settlements)
+    .where(eq(schema.settlements.gameId, gameId));
+
+  for (const player of activePlayers) {
+    if (player.isEliminated) continue;
+
+    const playerSettlements = finalSettlements.filter(s => s.ownerId === player.id);
+    if (playerSettlements.length === 0) {
+      // Realm death — all settlements lost
+      await db.update(schema.players)
+        .set({ isEliminated: true, isSpectator: true })
+        .where(eq(schema.players.id, player.id));
+
+      events.push({
+        type: 'player_eliminated',
+        description: `${player.countryName} has been eliminated! All settlements were lost.`,
+        playerIds: activePlayers.map(p => p.id),
+      });
+    }
+  }
+
+  // Re-check alive players after elimination
+  const latestPlayers = await db.select().from(schema.players)
+    .where(eq(schema.players.gameId, gameId));
+  const alivePlayers = latestPlayers.filter(p => !p.isEliminated && !p.isSpectator);
   const gameOver = alivePlayers.length <= 1;
   const winnerId = gameOver && alivePlayers.length === 1 ? alivePlayers[0].id : null;
 
+  if (gameOver && winnerId) {
+    const winner = alivePlayers[0];
+    events.push({
+      type: 'game_over',
+      description: `${winner.countryName} is victorious! Last nation standing.`,
+      playerIds: latestPlayers.map(p => p.id),
+    });
+  }
+
   return { events, combatLogs, gameOver, winnerId };
+}
+
+function formatWinterEvent(event: StabilityEventType): string {
+  const labels: Record<StabilityEventType, string> = {
+    minor_unrest: 'Minor Unrest',
+    riots: 'Riots!',
+    desertion: 'Desertion!',
+    mass_desertion: 'Mass Desertion!',
+    rebellion: 'Rebellion!',
+    noble_defection: 'Noble Defection!',
+    settlement_defection: 'Settlement Defection!',
+    stability_bonus: '+10% Stability!',
+  };
+  return labels[event] ?? event;
 }

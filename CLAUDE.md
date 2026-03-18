@@ -1,4 +1,4 @@
-# Kingdoms Game — Development Guide
+# Sovereigns — Development Guide
 
 ## Project Overview
 
@@ -8,7 +8,7 @@ Full design spec at `design_document.md`. Implementation plan at `.claude/plans/
 ## Tech Stack
 
 - **Monorepo**: pnpm workspaces + Turborepo
-- **Shared**: `packages/shared` — types, constants, pure logic (hex math, combat engine, pathfinding, visibility, supply, economy)
+- **Shared**: `packages/shared` — types, constants, pure logic (hex math, combat engine, pathfinding, visibility, supply, economy, stability)
 - **Server**: `apps/server` — Node.js + Express, Socket.IO, Drizzle ORM + PostgreSQL, BullMQ + Redis
 - **Client**: `apps/client` — React 18 + Vite, PixiJS 8 (hex map), Zustand (state), Socket.IO client
 
@@ -33,8 +33,10 @@ pnpm dev  # runs both server (:3000) and client (:5173)
 - **Turn resolution**: 17-step server-side sequence in `apps/server/src/game/turn-resolver.ts`
 - **Fog of war**: Server-side filter (`fog-filter.ts`) on every outbound message — security boundary
 - **Combat engine**: Pure function in `packages/shared/src/logic/combat-engine.ts` — seeded PRNG (mulberry32), deterministic replay
+- **Stability engine**: Pure functions in `packages/shared/src/logic/stability.ts` — per-turn calculation, Late Winter d20 roll
 - **Hex grid**: Flat-top hexagons, axial (q,r) coordinates, layered PixiJS rendering (terrain → borders → rivers → icons)
 - **Pending orders**: Client-side Zustand slice (`store/slices/orders.ts`) → submitted via TurnBar → stored as JSONB → consumed by turn-resolver
+- **Notifications**: Socket.IO events → client Zustand store → NotificationBell + EventLogPanel
 
 ## Implementation Progress
 
@@ -88,13 +90,22 @@ pnpm dev  # runs both server (:3000) and client (:5173)
 - Server API: `/api/games/:slug/letters`, `/api/games/:slug/diplomacy/propose`, letter read marking
 - Tech tab, Diplomacy tab, Trade tab all fully implemented
 
-### Phase 7: Stability + Notifications + Polish — NOT STARTED
-- Stability system (0-100%, 5 bands, consequences)
-- Late Winter d20 roll + outcome table
-- Notification bell + event log
-- Turn replay, flag heraldry builder
-- Right-click context menus, elimination/spectator
-- Parchment aesthetic pass
+### Phase 7: Stability + Notifications + Polish — COMPLETE
+- Stability engine: per-turn calculation with tax/food/gold/recovery sources
+- 5 stability bands (Stable/Uneasy/Unstable/Crisis/Collapse) with escalating consequences
+- Band consequences: desertion chance at Unstable+, UI display with colored bars
+- Late Winter d20 roll: full outcome table (riots, desertion, rebellion, noble defection, mass desertion, stability bonus)
+- Event effects: pop loss (riots), unit strength loss (desertion/mass desertion), general removal (noble defection), settlement pop loss (rebellion)
+- Step 17: Elimination check (realm death when all settlements lost) + victory check (last standing)
+- Notification bell with unread badge, dropdown list, type-based badges
+- Event log panel with colored dots per event type
+- Game over overlay with victory/defeat screen and final standings
+- Spectator mode: eliminated players see "Spectating" banner, can't submit turns
+- Flag heraldry builder: field color picker + charge symbol selector (10 charges)
+- CountryTab: stability bar + band label + consequences list, diplomacy status per nation
+- HexDetailPanel: click-to-select armies with gold highlight
+- Context menu component (reusable)
+- Parchment aesthetic polish: custom scrollbars, selection colors, button transitions, card hover effects, panel slide animations, fade-in overlays
 
 ### Phase 8: Map Design + Playtest + Deploy — NOT STARTED
 - Hand-craft V1 hex map (balanced 4-8 starts)
@@ -117,14 +128,14 @@ pnpm dev  # runs both server (:3000) and client (:5173)
 12. Hex claiming
 13. Population growth
 14. Supply consumption + attrition
-15. Stability calculation
-16. Late Winter d20 roll (not yet implemented)
-17. Elimination + victory check (not yet implemented)
+15. Stability calculation (tax/food/gold factors + band consequences)
+16. Late Winter d20 roll (turn 8 of each year — seasonal events)
+17. Elimination + victory check (realm death → spectator, last standing wins)
 
 ## File Conventions
 
 - All shared logic is pure functions (no DB, no side effects) in `packages/shared/src/logic/`
-- Constants tables (units, ships, buildings, tech, terrain, combat) in `packages/shared/src/constants/`
+- Constants tables (units, ships, buildings, tech, terrain, combat, stability) in `packages/shared/src/constants/`
 - Type definitions in `packages/shared/src/types/`
-- Client components: `tabs/` for tab content, `panels/` for overlays, `map/` for PixiJS, `layout/` for page structure
+- Client components: `tabs/` for tab content, `panels/` for overlays/notifications, `shared/` for reusable UI, `map/` for PixiJS, `layout/` for page structure
 - Client state: Zustand slices in `store/slices/` (game, ui, orders)

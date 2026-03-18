@@ -42,7 +42,7 @@ startTurnWorker(async (gameId, turnNumber) => {
 });
 
 server.listen(config.port, () => {
-  console.log(`Kingdoms server running on http://localhost:${config.port}`);
+  console.log(`Sovereigns server running on http://localhost:${config.port}`);
 });
 
 // Graceful shutdown for hot-reload (tsx watch)

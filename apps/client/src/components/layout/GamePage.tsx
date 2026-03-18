@@ -8,10 +8,16 @@ import { TurnBar } from './TurnBar.js';
 import { MapCanvas } from '../map/MapCanvas.js';
 import { HexDetailPanel } from '../panels/HexDetailPanel.js';
 import { CombatLogPanel } from '../panels/CombatLogPanel.js';
+import { NotificationBell } from '../panels/NotificationBell.js';
+import { EventLogPanel } from '../panels/EventLogPanel.js';
+import { GameOverOverlay } from '../panels/GameOverOverlay.js';
+
+let notifCounter = 0;
 
 export function GamePage() {
   const { slug } = useParams<{ slug: string }>();
   const setGameState = useStore(s => s.setGameState);
+  const addNotification = useStore(s => s.addNotification);
   const gameId = useStore(s => (s.game as Record<string, unknown> | null)?.id as string | undefined);
 
   const fetchState = useCallback(async () => {
@@ -41,12 +47,38 @@ export function GamePage() {
 
     const socket = connectToGame(gameId, sessionToken);
 
-    socket.on('turn_resolved', () => {
+    socket.on('turn_resolved', (data: { turnNumber: number; events: any[]; gameOver?: boolean; winnerId?: string }) => {
       fetchState();
       // Reset pending orders for the new turn
       const state = useStore.getState();
       const taxRate = (state.player as any)?.taxRate ?? 'low';
       state.resetOrders(taxRate);
+
+      // Generate notifications from turn events
+      const myId = (state.player as any)?.id;
+      if (data.events) {
+        for (const evt of data.events) {
+          if (!evt.playerIds || evt.playerIds.length === 0 || evt.playerIds.includes(myId)) {
+            addNotification({
+              id: `notif-${++notifCounter}`,
+              type: evt.type,
+              turn: data.turnNumber,
+              message: evt.description,
+              data: evt,
+              isRead: false,
+            });
+          }
+        }
+      }
+
+      // Add turn resolved notification
+      addNotification({
+        id: `notif-${++notifCounter}`,
+        type: 'turn_resolved',
+        turn: data.turnNumber,
+        message: `Turn ${data.turnNumber} has been resolved.`,
+        isRead: false,
+      });
     });
 
     socket.on('turn_started', () => {
@@ -66,23 +98,40 @@ export function GamePage() {
       state.setGameState({ players: updatedPlayers, player: updatedPlayer });
     });
 
+    socket.on('game_over', ({ winnerId }: { winnerId: string }) => {
+      fetchState();
+      addNotification({
+        id: `notif-${++notifCounter}`,
+        type: 'game_over',
+        turn: 0,
+        message: 'The game is over!',
+        data: { winnerId },
+        isRead: false,
+      });
+    });
+
     return () => {
       socket.off('turn_resolved');
       socket.off('turn_started');
       socket.off('player_submitted');
+      socket.off('game_over');
     };
-  }, [slug, gameId, fetchState]);
+  }, [slug, gameId, fetchState, addNotification]);
 
   const activeTab = useStore(s => s.activeTab);
+  const game = useStore(s => s.game) as Record<string, unknown> | null;
 
   return (
     <div className="game-layout">
       <div className="game-map-area">
         <MapCanvas />
         <TurnBar />
+        <NotificationBell />
         <TabOverlay />
         {!activeTab && <HexDetailPanel />}
         <CombatLogPanel />
+        <EventLogPanel />
+        {game?.status === 'finished' && <GameOverOverlay />}
       </div>
       <BottomBar />
     </div>

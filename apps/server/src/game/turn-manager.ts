@@ -103,10 +103,12 @@ async function triggerTurnResolution(gameId: string, turnNumber: number, remaini
   // Run the resolution engine
   const result = await resolveTurn(gameId, turnNumber);
 
-  // Broadcast results to all players
+  // Broadcast results to all players with events for notifications
   io?.to(`game:${gameId}`).emit('turn_resolved', {
     turnNumber,
     events: result.events,
+    gameOver: result.gameOver,
+    winnerId: result.winnerId,
   });
 
   // Check for game over

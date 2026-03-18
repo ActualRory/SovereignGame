@@ -58,6 +58,7 @@ lobbyRouter.post('/', async (req, res) => {
 /** GET /api/lobbies/:slug — Get lobby state. */
 lobbyRouter.get('/:slug', async (req, res) => {
   const { slug } = req.params;
+  const sessionToken = req.headers['x-session-token'] as string | undefined;
 
   const [game] = await db.select()
     .from(schema.games)
@@ -72,7 +73,17 @@ lobbyRouter.get('/:slug', async (req, res) => {
     .from(schema.players)
     .where(eq(schema.players.gameId, game.id));
 
-  res.json({ game, players: gamePlayers });
+  // Identify the requesting player
+  let myPlayerId: string | null = null;
+  if (sessionToken) {
+    const me = gamePlayers.find(p => p.sessionToken === sessionToken);
+    if (me) myPlayerId = me.id;
+  }
+
+  // Strip session tokens from the response
+  const safePlayers = gamePlayers.map(({ sessionToken: _st, ...rest }) => rest);
+
+  res.json({ game, players: safePlayers, myPlayerId });
 });
 
 /** POST /api/lobbies/:slug/join — Join an existing lobby. */
@@ -114,7 +125,54 @@ lobbyRouter.post('/:slug/join', async (req, res) => {
     color: PLAYER_COLORS[slotIndex % PLAYER_COLORS.length],
   }).returning();
 
-  res.status(201).json({ player, sessionToken });
+  res.status(201).json({ player, sessionToken, playerId: player.id });
+});
+
+/** PATCH /api/lobbies/:slug/player — Update player settings (name, color, etc). */
+lobbyRouter.patch('/:slug/player', async (req, res) => {
+  const { slug } = req.params;
+  const sessionToken = req.headers['x-session-token'] as string;
+  const { countryName, rulerName, color } = req.body as {
+    countryName?: string;
+    rulerName?: string;
+    color?: string;
+  };
+
+  if (!sessionToken) {
+    res.status(401).json({ error: 'Session token required' });
+    return;
+  }
+
+  const [game] = await db.select()
+    .from(schema.games)
+    .where(eq(schema.games.slug, slug));
+
+  if (!game) {
+    res.status(404).json({ error: 'Game not found' });
+    return;
+  }
+
+  const [player] = await db.select()
+    .from(schema.players)
+    .where(eq(schema.players.sessionToken, sessionToken));
+
+  if (!player || player.gameId !== game.id) {
+    res.status(403).json({ error: 'Not a player in this game' });
+    return;
+  }
+
+  const updateFields: Record<string, unknown> = {};
+  if (countryName !== undefined) updateFields.countryName = countryName;
+  if (rulerName !== undefined) updateFields.rulerName = rulerName;
+  if (color !== undefined) updateFields.color = color;
+
+  if (Object.keys(updateFields).length > 0) {
+    await db.update(schema.players)
+      .set(updateFields)
+      .where(eq(schema.players.id, player.id));
+  }
+
+  res.json({ success: true });
 });
 
 /** PATCH /api/lobbies/:slug/settings — Update lobby settings. */

@@ -276,9 +276,10 @@ gameRouter.get('/:slug/state', async (req, res) => {
     t.playerAId === player.id || t.playerBId === player.id
   );
 
-  // Fetch latest combat logs (from previous turn)
+  // Fetch latest combat logs + event log (from previous turn)
   const prevTurn = game.currentTurn - 1;
   let latestCombatLogs: unknown[] = [];
+  let latestEventLog: unknown[] = [];
   if (prevTurn >= 1) {
     const [snapshot] = await db.select().from(schema.turnSnapshots)
       .where(and(
@@ -293,11 +294,17 @@ gameRouter.get('/:slug/state', async (req, res) => {
         return atkArmy?.ownerId === player.id || defArmy?.ownerId === player.id;
       });
     }
+    if (snapshot?.eventLog) {
+      // Filter: only show events that involve this player
+      latestEventLog = (snapshot.eventLog as any[]).filter((evt: any) => {
+        return !evt.playerIds || evt.playerIds.length === 0 || evt.playerIds.includes(player.id);
+      });
+    }
   }
 
   try {
     const filtered = await buildFilteredState(game.id, player.id, rawState);
-    res.json({ ...filtered, combatLogs: latestCombatLogs, techProgress: myTech, letters: myLetters, diplomacyRelations: myRelations, tradeAgreements: myTrades });
+    res.json({ ...filtered, combatLogs: latestCombatLogs, eventLog: latestEventLog, techProgress: myTech, letters: myLetters, diplomacyRelations: myRelations, tradeAgreements: myTrades });
   } catch (err) {
     console.error('Fog filter error:', err);
     res.json({
@@ -309,10 +316,53 @@ gameRouter.get('/:slug/state', async (req, res) => {
       armies: rawState.armies,
       visibility: {},
       combatLogs: latestCombatLogs,
+      eventLog: latestEventLog,
       techProgress: myTech,
       letters: myLetters,
       diplomacyRelations: myRelations,
       tradeAgreements: myTrades,
     });
   }
+});
+
+/** POST /api/games/:slug/player/flag — Update player flag data and optionally color. */
+gameRouter.post('/:slug/player/flag', async (req, res) => {
+  const { slug } = req.params;
+  const sessionToken = req.headers['x-session-token'] as string;
+  const { flagData, color } = req.body as { flagData?: Record<string, unknown>; color?: string };
+
+  if (!sessionToken) {
+    res.status(401).json({ error: 'Session token required' });
+    return;
+  }
+
+  const [game] = await db.select()
+    .from(schema.games)
+    .where(eq(schema.games.slug, slug));
+
+  if (!game) {
+    res.status(404).json({ error: 'Game not found' });
+    return;
+  }
+
+  const [player] = await db.select()
+    .from(schema.players)
+    .where(eq(schema.players.sessionToken, sessionToken));
+
+  if (!player || player.gameId !== game.id) {
+    res.status(403).json({ error: 'Not a player in this game' });
+    return;
+  }
+
+  const updateFields: Record<string, unknown> = {};
+  if (flagData) updateFields.flagData = flagData;
+  if (color) updateFields.color = color;
+
+  if (Object.keys(updateFields).length > 0) {
+    await db.update(schema.players)
+      .set(updateFields)
+      .where(eq(schema.players.id, player.id));
+  }
+
+  res.json({ success: true });
 });

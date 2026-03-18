@@ -12,6 +12,8 @@ export function HexDetailPanel() {
   const players = useStore(s => s.players);
   const player = useStore(s => s.player);
   const setSelectedHex = useStore(s => s.setSelectedHex);
+  const setSelectedArmyId = useStore(s => s.setSelectedArmyId);
+  const selectedArmyId = useStore(s => s.selectedArmyId);
 
   if (!selectedHex) return null;
 
@@ -139,17 +141,28 @@ export function HexDetailPanel() {
           {hexArmies.map((a: any) => {
             const armyOwner = players.find((p: any) => p.id === a.ownerId);
             const isOwnArmy = a.ownerId === (player as any)?.id;
+            const isSelected = selectedArmyId === a.id;
             return (
-              <div key={a.id} className="settlement-card" style={{ marginTop: 6 }}>
+              <div
+                key={a.id}
+                className="settlement-card"
+                style={{
+                  marginTop: 6,
+                  borderColor: isSelected ? 'var(--accent-gold)' : undefined,
+                  borderWidth: isSelected ? 2 : undefined,
+                  cursor: isOwnArmy ? 'pointer' : 'default',
+                }}
+                onClick={() => isOwnArmy && setSelectedArmyId(isSelected ? null : a.id)}
+              >
                 <div className="settlement-header">
                   <strong>{a.name}</strong>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    {(armyOwner as any)?.countryName}
+                    {isSelected ? 'Selected' : (armyOwner as any)?.countryName}
                   </span>
                 </div>
                 {isOwnArmy && a.units ? (
                   <div className="settlement-stats">
-                    <span>{a.units.length} units</span>
+                    <span>{a.units.filter((u: any) => u.state !== 'destroyed').length} units</span>
                     <span>Supply: {a.supplyBank}</span>
                   </div>
                 ) : a.unitCount != null ? (

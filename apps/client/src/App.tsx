@@ -23,7 +23,7 @@ export function App() {
   return (
     <div className="home-page">
       <div className="home-card">
-        <h1 className="home-title">Kingdoms</h1>
+        <h1 className="home-title">Sovereigns</h1>
         <p className="home-subtitle">A game of conquest and diplomacy</p>
 
         <div className="home-form">

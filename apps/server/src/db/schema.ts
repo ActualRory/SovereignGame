@@ -43,7 +43,7 @@ export const players = pgTable('players', {
   gameId: uuid('game_id').notNull().references(() => games.id),
   sessionToken: text('session_token').notNull().unique(),
   displayName: text('display_name').notNull(),
-  countryName: text('country_name').notNull().default('New Kingdom'),
+  countryName: text('country_name').notNull().default('New Realm'),
   rulerName: text('ruler_name').notNull().default('Ruler'),
   flagData: jsonb('flag_data').$type<Record<string, unknown>>().default({}),
   color: text('color').notNull().default('#888888'),

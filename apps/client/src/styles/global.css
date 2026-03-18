@@ -38,6 +38,31 @@ body {
   background: var(--bg-parchment);
 }
 
+/* Parchment scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-parchment-dark);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-dark);
+}
+
+/* Selection colors */
+::selection {
+  background: rgba(184, 134, 11, 0.3);
+  color: var(--text-primary);
+}
+
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
   font-weight: 400;
@@ -82,6 +107,17 @@ h1, h2, h3, h4, h5, h6 {
 
 .btn-primary:hover {
   background: #a63000;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .btn-secondary {
@@ -159,10 +195,16 @@ h1, h2, h3, h4, h5, h6 {
   left: 0;
   right: 0;
   bottom: var(--tab-height);
-  background: rgba(245, 230, 200, 0.95);
+  background: rgba(245, 230, 200, 0.97);
   overflow-y: auto;
   padding: 24px;
   z-index: 10;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ─── Bottom Bar ─── */
@@ -217,6 +259,12 @@ h1, h2, h3, h4, h5, h6 {
   overflow-y: auto;
   padding: 16px;
   z-index: 5;
+  animation: slideInRight 0.2s ease-out;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
 
 /* ─── Lobby Page ─── */
@@ -384,6 +432,11 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 6px;
   padding: 12px;
   margin-top: 8px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.settlement-card:hover {
+  border-color: var(--border-dark);
 }
 
 .settlement-header {
@@ -493,4 +546,356 @@ h1, h2, h3, h4, h5, h6 {
   font-size: 16px;
   margin-bottom: 4px;
   color: var(--accent-red);
+}
+
+/* ─── Notification Bell ─── */
+
+.notification-bell-container {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 16;
+}
+
+.notification-bell-btn {
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--border-color);
+  border-radius: 50%;
+  background: var(--bg-parchment-light);
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: background 0.15s;
+}
+
+.notification-bell-btn:hover {
+  background: var(--bg-parchment-dark);
+}
+
+.bell-icon {
+  font-size: 18px;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--accent-red);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.notification-dropdown {
+  position: absolute;
+  top: 48px;
+  left: 0;
+  width: 320px;
+  max-height: 400px;
+  background: var(--bg-parchment-light);
+  border: 2px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.notification-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.notification-list {
+  overflow-y: auto;
+  max-height: 340px;
+}
+
+.notification-item {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.notification-item:hover {
+  background: var(--bg-parchment-dark);
+}
+
+.notification-item.unread {
+  background: rgba(184, 134, 11, 0.08);
+}
+
+.notification-type-badge {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-parchment-dark);
+  padding: 2px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  height: fit-content;
+  margin-top: 2px;
+}
+
+.notification-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notification-message {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.notification-turn {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ─── Event Log Panel ─── */
+
+.event-log-panel {
+  position: absolute;
+  bottom: calc(var(--tab-height) + 12px);
+  right: 12px;
+  z-index: 15;
+  background: var(--bg-parchment-light);
+  border: 2px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px 12px;
+  max-width: 340px;
+  max-height: 50vh;
+  overflow-y: auto;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
+
+.event-log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.event-log-header h3 {
+  font-family: var(--font-heading);
+  font-size: 15px;
+  color: var(--accent-blue);
+}
+
+.event-log-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.event-log-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 3px 0;
+}
+
+.event-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.event-description {
+  line-height: 1.3;
+}
+
+/* ─── Game Over Overlay ─── */
+
+.game-over-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(44, 24, 16, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.game-over-card {
+  background: var(--bg-parchment-light);
+  border: 3px solid var(--accent-gold);
+  border-radius: 12px;
+  padding: 48px;
+  max-width: 500px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.4);
+}
+
+.game-over-title {
+  font-family: var(--font-heading);
+  font-size: 48px;
+  color: var(--accent-gold);
+  margin-bottom: 16px;
+}
+
+.game-over-winner {
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+
+.game-over-subtitle {
+  font-style: italic;
+  color: var(--text-secondary);
+  font-size: 16px;
+  margin-bottom: 24px;
+}
+
+.game-over-stats {
+  text-align: left;
+  margin-top: 16px;
+}
+
+.game-over-stats h3 {
+  font-family: var(--font-heading);
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+/* ─── Stability Band ─── */
+
+.stability-bar {
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.stability-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.stability-band-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+/* ─── Flag Heraldry ─── */
+
+.flag-preview {
+  width: 80px;
+  height: 60px;
+  border: 2px solid var(--border-dark);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+
+.flag-builder {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.flag-builder label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.flag-builder select,
+.flag-builder input[type="color"] {
+  padding: 3px 6px;
+  font-size: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-parchment-light);
+}
+
+/* ─── Context Menu ─── */
+
+.context-menu {
+  position: fixed;
+  z-index: 200;
+  background: var(--bg-parchment-light);
+  border: 2px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  min-width: 160px;
+  overflow: hidden;
+}
+
+.context-menu-item {
+  padding: 8px 14px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.context-menu-item:hover {
+  background: var(--bg-parchment-dark);
+}
+
+.context-menu-item.danger {
+  color: var(--accent-red);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 2px 0;
+}
+
+/* ─── Spectator Banner ─── */
+
+.spectator-banner {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 16;
+  background: var(--bg-parchment-dark);
+  border: 2px solid var(--border-dark);
+  border-radius: 6px;
+  padding: 8px 20px;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  color: var(--text-muted);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }

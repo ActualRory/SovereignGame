@@ -14,6 +14,15 @@ export function TurnBar() {
 
   if (!game || !player || game.status !== 'active') return null;
 
+  // Spectators/eliminated players can't submit
+  if ((player as any).isEliminated || (player as any).isSpectator) {
+    return (
+      <div className="spectator-banner">
+        Spectating
+      </div>
+    );
+  }
+
   const currentTurn = (game.currentTurn as number) ?? 1;
   const turnLabel = getTurnLabel(currentTurn);
   const hasSubmitted = (player as any).hasSubmitted ?? false;

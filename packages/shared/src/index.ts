@@ -31,3 +31,4 @@ export * from './logic/hex-utils.js';
 export * from './logic/visibility.js';
 export * from './logic/supply.js';
 export * from './logic/pathfinding.js';
+export * from './logic/combat-engine.js';

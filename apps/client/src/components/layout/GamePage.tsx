@@ -7,6 +7,7 @@ import { TabOverlay } from './TabOverlay.js';
 import { TurnBar } from './TurnBar.js';
 import { MapCanvas } from '../map/MapCanvas.js';
 import { HexDetailPanel } from '../panels/HexDetailPanel.js';
+import { CombatLogPanel } from '../panels/CombatLogPanel.js';
 
 export function GamePage() {
   const { slug } = useParams<{ slug: string }>();
@@ -81,6 +82,7 @@ export function GamePage() {
         <TurnBar />
         <TabOverlay />
         {!activeTab && <HexDetailPanel />}
+        <CombatLogPanel />
       </div>
       <BottomBar />
     </div>

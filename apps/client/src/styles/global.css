@@ -470,3 +470,27 @@ h1, h2, h3, h4, h5, h6 {
   border-color: var(--text-muted);
   cursor: not-allowed;
 }
+
+/* ─── Combat Log Panel ─── */
+
+.combat-log-panel {
+  position: absolute;
+  bottom: calc(var(--tab-height) + 12px);
+  left: 12px;
+  z-index: 15;
+  background: var(--bg-parchment-light);
+  border: 2px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px;
+  max-width: 360px;
+  max-height: 50vh;
+  overflow-y: auto;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
+
+.combat-log-panel h3 {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  margin-bottom: 4px;
+  color: var(--accent-red);
+}

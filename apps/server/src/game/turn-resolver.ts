@@ -16,13 +16,17 @@ import {
   getNextTier, TIER_ORDER,
   hexNeighbors, hexKey, hexDistance, hasRiverBetween,
   updateArmySupply, calculateHexSupply, ATTRITION_STRENGTH_LOSS,
+  resolveCombat, resolveSiegeAssault,
+  type CombatInput, type ArmySide, type CombatUnitInput, type CombatResult,
   type TurnOrders, emptyOrders,
   type TaxRate, type BuildingType, type ResourceType, type SettlementTier,
-  type TerrainType, type UnitType, type HexDirection, type Season,
+  type TerrainType, type UnitType, type UnitState, type Veterancy, type UnitPosition,
+  type HexDirection, type Season,
 } from '@kingdoms/shared';
 
 export interface TurnResult {
   events: EventEntry[];
+  combatLogs: CombatResult[];
   gameOver: boolean;
   winnerId: string | null;
 }
@@ -33,8 +37,20 @@ interface EventEntry {
   playerIds: string[];
 }
 
+/** Simple string hash to generate a deterministic combat seed. */
+function hashSeed(input: string): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    const char = input.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash);
+}
+
 export async function resolveTurn(gameId: string, turnNumber: number): Promise<TurnResult> {
   const events: EventEntry[] = [];
+  const combatLogs: CombatResult[] = [];
   const season = getSeason(turnNumber);
   const isMajorEnd = isMajorTurnEnd(turnNumber);
 
@@ -680,6 +696,324 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   }
 
   // ══════════════════════════════════════════════
+  // STEP 10: Combat (triggered by army collisions after movement)
+  // ══════════════════════════════════════════════
+  const postMoveArmies = await db.select().from(schema.armies)
+    .where(eq(schema.armies.gameId, gameId));
+
+  // Group armies by hex
+  const armiesByHex = new Map<string, typeof postMoveArmies>();
+  for (const army of postMoveArmies) {
+    const key = hexKey({ q: army.hexQ, r: army.hexR });
+    const list = armiesByHex.get(key) ?? [];
+    list.push(army);
+    armiesByHex.set(key, list);
+  }
+
+  // Track armies already resolved in combat this turn
+  const resolvedArmyIds = new Set<string>();
+
+  for (const [hKey, hexArmies] of armiesByHex) {
+    if (hexArmies.length < 2) continue;
+
+    // Group by owner
+    const byOwner = new Map<string, typeof hexArmies>();
+    for (const a of hexArmies) {
+      const list = byOwner.get(a.ownerId) ?? [];
+      list.push(a);
+      byOwner.set(a.ownerId, list);
+    }
+
+    if (byOwner.size < 2) continue; // no enemy collision
+
+    const ownerIds = [...byOwner.keys()];
+    // Resolve pairwise: first two owners fight (simplification for V1)
+    const attackerOwnerId = ownerIds[0];
+    const defenderOwnerId = ownerIds[1];
+    const attackerArmies = byOwner.get(attackerOwnerId)!;
+    const defenderArmies = byOwner.get(defenderOwnerId)!;
+
+    // Use the first army from each side as the main combatant
+    const atkArmy = attackerArmies[0];
+    const defArmy = defenderArmies[0];
+
+    if (resolvedArmyIds.has(atkArmy.id) || resolvedArmyIds.has(defArmy.id)) continue;
+
+    // Load units for both armies
+    const atkUnits = await db.select().from(schema.units)
+      .where(eq(schema.units.armyId, atkArmy.id));
+    const defUnits = await db.select().from(schema.units)
+      .where(eq(schema.units.armyId, defArmy.id));
+
+    const activeAtkUnits = atkUnits.filter(u => u.state !== 'destroyed');
+    const activeDefUnits = defUnits.filter(u => u.state !== 'destroyed');
+
+    if (activeAtkUnits.length === 0 || activeDefUnits.length === 0) continue;
+
+    // Load generals
+    const [atkGeneral] = atkArmy.generalId
+      ? await db.select().from(schema.generals).where(eq(schema.generals.id, atkArmy.generalId))
+      : [null];
+    const [defGeneral] = defArmy.generalId
+      ? await db.select().from(schema.generals).where(eq(schema.generals.id, defArmy.generalId))
+      : [null];
+
+    // Get terrain
+    const combatHex = hexDataForMovement.find(h => hexKey({ q: h.q, r: h.r }) === hKey);
+    const combatTerrain = (combatHex?.terrain ?? 'plains') as TerrainType;
+
+    // Generate combat seed
+    const combatSeed = hashSeed(`${gameId}:${turnNumber}:${atkArmy.id}:${defArmy.id}`);
+
+    const combatInput: CombatInput = {
+      id: `combat-${turnNumber}-${atkArmy.id}-${defArmy.id}`,
+      seed: combatSeed,
+      terrain: combatTerrain,
+      riverCrossing: false,
+      attacker: {
+        armyId: atkArmy.id,
+        commandRating: atkGeneral?.commandRating ?? 0,
+        units: activeAtkUnits.map(u => ({
+          id: u.id,
+          type: u.type as UnitType,
+          position: (u.position ?? 'frontline') as UnitPosition,
+          strengthPct: u.strengthPct,
+          state: u.state as UnitState,
+          veterancy: (u.veterancy ?? 'fresh') as Veterancy,
+          xp: u.xp ?? 0,
+        })),
+      },
+      defender: {
+        armyId: defArmy.id,
+        commandRating: defGeneral?.commandRating ?? 0,
+        units: activeDefUnits.map(u => ({
+          id: u.id,
+          type: u.type as UnitType,
+          position: (u.position ?? 'frontline') as UnitPosition,
+          strengthPct: u.strengthPct,
+          state: u.state as UnitState,
+          veterancy: (u.veterancy ?? 'fresh') as Veterancy,
+          xp: u.xp ?? 0,
+        })),
+      },
+    };
+
+    const result = resolveCombat(combatInput);
+    combatLogs.push(result);
+
+    // Apply combat results to units in DB
+    for (const loss of [...result.attackerLosses, ...result.defenderLosses]) {
+      const newState = loss.destroyed ? 'destroyed'
+        : loss.endStrength < 40 ? 'broken'
+        : loss.endStrength < 60 ? 'depleted'
+        : 'full';
+
+      await db.update(schema.units)
+        .set({
+          strengthPct: Math.max(0, Math.round(loss.endStrength)),
+          state: newState,
+        })
+        .where(eq(schema.units.id, loss.unitId));
+    }
+
+    // Loser retreats (move back 1 hex toward their territory)
+    if (result.winner !== 'draw') {
+      const loserArmy = result.winner === 'attacker' ? defArmy : atkArmy;
+      const winnerArmy = result.winner === 'attacker' ? atkArmy : defArmy;
+
+      // Find a neighboring hex to retreat to
+      const neighbors = hexNeighbors({ q: loserArmy.hexQ, r: loserArmy.hexR });
+      const retreatHex = neighbors.find(n => {
+        const nh = hexDataForMovement.find(h => h.q === n.q && h.r === n.r);
+        return nh && nh.terrain !== 'coast' && nh.terrain !== 'mountains';
+      });
+
+      if (retreatHex) {
+        await db.update(schema.armies)
+          .set({ hexQ: retreatHex.q, hexR: retreatHex.r, movementPath: null })
+          .where(eq(schema.armies.id, loserArmy.id));
+      }
+
+      // Winner stops moving
+      await db.update(schema.armies)
+        .set({ movementPath: null })
+        .where(eq(schema.armies.id, winnerArmy.id));
+
+      const winnerPlayer = activePlayers.find(p => p.id === winnerArmy.ownerId);
+      const loserPlayer = activePlayers.find(p => p.id === loserArmy.ownerId);
+      events.push({
+        type: 'battle',
+        description: `${winnerPlayer?.countryName ?? '?'} defeated ${loserPlayer?.countryName ?? '?'} at (${loserArmy.hexQ},${loserArmy.hexR})`,
+        playerIds: [winnerArmy.ownerId, loserArmy.ownerId],
+      });
+    }
+
+    resolvedArmyIds.add(atkArmy.id);
+    resolvedArmyIds.add(defArmy.id);
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 11: Siege Assault + Capture/Raze
+  // ══════════════════════════════════════════════
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
+
+    for (const siege of (orders.siegeAssaults ?? [])) {
+      const [army] = await db.select().from(schema.armies)
+        .where(eq(schema.armies.id, siege.armyId));
+      if (!army || army.ownerId !== player.id) continue;
+      if (army.hexQ !== siege.targetHexQ || army.hexR !== siege.targetHexR) continue;
+
+      // Find enemy settlement on this hex
+      const [targetSettlement] = await db.select().from(schema.settlements)
+        .where(and(
+          eq(schema.settlements.gameId, gameId),
+          eq(schema.settlements.hexQ, siege.targetHexQ),
+          eq(schema.settlements.hexR, siege.targetHexR),
+        ));
+      if (!targetSettlement || targetSettlement.ownerId === player.id) continue;
+
+      // Load attacker units
+      const atkUnits = await db.select().from(schema.units)
+        .where(eq(schema.units.armyId, army.id));
+      const activeAtkUnits = atkUnits.filter(u => u.state !== 'destroyed');
+      if (activeAtkUnits.length === 0) continue;
+
+      // Load defender army (if any garrison)
+      const defenderArmies = await db.select().from(schema.armies)
+        .where(and(
+          eq(schema.armies.gameId, gameId),
+          eq(schema.armies.hexQ, siege.targetHexQ),
+          eq(schema.armies.hexR, siege.targetHexR),
+          eq(schema.armies.ownerId, targetSettlement.ownerId),
+        ));
+
+      let defenderUnits: typeof atkUnits = [];
+      let defArmy = defenderArmies[0] ?? null;
+      if (defArmy) {
+        defenderUnits = await db.select().from(schema.units)
+          .where(eq(schema.units.armyId, defArmy.id));
+        defenderUnits = defenderUnits.filter(u => u.state !== 'destroyed');
+      }
+
+      // Load generals
+      const [atkGeneral] = army.generalId
+        ? await db.select().from(schema.generals).where(eq(schema.generals.id, army.generalId))
+        : [null];
+      const [defGeneral] = defArmy?.generalId
+        ? await db.select().from(schema.generals).where(eq(schema.generals.id, defArmy.generalId))
+        : [null];
+
+      const combatHex = hexDataForMovement.find(
+        h => h.q === siege.targetHexQ && h.r === siege.targetHexR
+      );
+      const siegeTerrain = (combatHex?.terrain ?? 'plains') as TerrainType;
+      const siegeSeed = hashSeed(`${gameId}:${turnNumber}:siege:${army.id}`);
+
+      const siegeInput: CombatInput = {
+        id: `siege-${turnNumber}-${army.id}`,
+        seed: siegeSeed,
+        terrain: siegeTerrain,
+        riverCrossing: false,
+        attacker: {
+          armyId: army.id,
+          commandRating: atkGeneral?.commandRating ?? 0,
+          units: activeAtkUnits.map(u => ({
+            id: u.id,
+            type: u.type as UnitType,
+            position: (u.position ?? 'frontline') as UnitPosition,
+            strengthPct: u.strengthPct,
+            state: u.state as UnitState,
+            veterancy: (u.veterancy ?? 'fresh') as Veterancy,
+            xp: u.xp ?? 0,
+          })),
+        },
+        defender: {
+          armyId: defArmy?.id ?? 'garrison',
+          commandRating: defGeneral?.commandRating ?? 0,
+          units: defenderUnits.map(u => ({
+            id: u.id,
+            type: u.type as UnitType,
+            position: (u.position ?? 'frontline') as UnitPosition,
+            strengthPct: u.strengthPct,
+            state: u.state as UnitState,
+            veterancy: (u.veterancy ?? 'fresh') as Veterancy,
+            xp: u.xp ?? 0,
+          })),
+        },
+      };
+
+      // If no garrison, attacker captures automatically
+      if (defenderUnits.length === 0) {
+        // Capture: 25% pop loss, transfer ownership
+        const newPop = Math.round(targetSettlement.population * 0.75);
+        await db.update(schema.settlements)
+          .set({ ownerId: player.id, population: newPop })
+          .where(eq(schema.settlements.id, targetSettlement.id));
+
+        // Transfer hex ownership
+        await db.update(schema.gameHexes)
+          .set({ ownerId: player.id })
+          .where(and(
+            eq(schema.gameHexes.gameId, gameId),
+            eq(schema.gameHexes.q, targetSettlement.hexQ),
+            eq(schema.gameHexes.r, targetSettlement.hexR),
+          ));
+
+        events.push({
+          type: 'settlement_captured',
+          description: `${player.countryName} captured ${targetSettlement.name}`,
+          playerIds: [player.id, targetSettlement.ownerId],
+        });
+        continue;
+      }
+
+      // Resolve siege assault
+      const siegeResult = resolveSiegeAssault(siegeInput);
+      combatLogs.push(siegeResult);
+
+      // Apply casualties
+      for (const loss of [...siegeResult.attackerLosses, ...siegeResult.defenderLosses]) {
+        const newState = loss.destroyed ? 'destroyed'
+          : loss.endStrength < 40 ? 'broken'
+          : loss.endStrength < 60 ? 'depleted'
+          : 'full';
+        await db.update(schema.units)
+          .set({ strengthPct: Math.max(0, Math.round(loss.endStrength)), state: newState })
+          .where(eq(schema.units.id, loss.unitId));
+      }
+
+      if (siegeResult.winner === 'attacker') {
+        // Capture: 25% pop loss, transfer ownership
+        const newPop = Math.round(targetSettlement.population * 0.75);
+        await db.update(schema.settlements)
+          .set({ ownerId: player.id, population: newPop })
+          .where(eq(schema.settlements.id, targetSettlement.id));
+
+        await db.update(schema.gameHexes)
+          .set({ ownerId: player.id })
+          .where(and(
+            eq(schema.gameHexes.gameId, gameId),
+            eq(schema.gameHexes.q, targetSettlement.hexQ),
+            eq(schema.gameHexes.r, targetSettlement.hexR),
+          ));
+
+        events.push({
+          type: 'settlement_captured',
+          description: `${player.countryName} captured ${targetSettlement.name} by assault`,
+          playerIds: [player.id, targetSettlement.ownerId],
+        });
+      } else {
+        events.push({
+          type: 'siege_failed',
+          description: `${player.countryName}'s assault on ${targetSettlement.name} was repelled`,
+          playerIds: [player.id, targetSettlement.ownerId],
+        });
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════
   // STEP 12: Hex Claiming (hold 1 Major Turn = 8 minor turns)
   // ══════════════════════════════════════════════
   const hexesForClaiming = await db.select().from(schema.gameHexes)
@@ -875,7 +1209,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     gameId,
     turnNumber,
     snapshot: {} as any, // TODO: full state snapshot in later phases
-    combatLogs: [],
+    combatLogs: combatLogs as any,
     eventLog: events as any,
   });
 
@@ -884,5 +1218,5 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   const gameOver = alivePlayers.length <= 1;
   const winnerId = gameOver && alivePlayers.length === 1 ? alivePlayers[0].id : null;
 
-  return { events, gameOver, winnerId };
+  return { events, combatLogs, gameOver, winnerId };
 }

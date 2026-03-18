@@ -260,12 +260,30 @@ gameRouter.get('/:slug/state', async (req, res) => {
     })) as Array<Record<string, unknown> & { units?: unknown[] }>,
   };
 
+  // Fetch latest combat logs (from previous turn)
+  const prevTurn = game.currentTurn - 1;
+  let latestCombatLogs: unknown[] = [];
+  if (prevTurn >= 1) {
+    const [snapshot] = await db.select().from(schema.turnSnapshots)
+      .where(and(
+        eq(schema.turnSnapshots.gameId, game.id),
+        eq(schema.turnSnapshots.turnNumber, prevTurn),
+      ));
+    if (snapshot?.combatLogs) {
+      // Filter: only show combats where this player was involved
+      latestCombatLogs = (snapshot.combatLogs as any[]).filter((log: any) => {
+        const atkArmy = allArmies.find(a => a.id === log.attackerArmyId);
+        const defArmy = allArmies.find(a => a.id === log.defenderArmyId);
+        return atkArmy?.ownerId === player.id || defArmy?.ownerId === player.id;
+      });
+    }
+  }
+
   try {
     const filtered = await buildFilteredState(game.id, player.id, rawState);
-    res.json(filtered);
+    res.json({ ...filtered, combatLogs: latestCombatLogs });
   } catch (err) {
     console.error('Fog filter error:', err);
-    // Fallback: return unfiltered state so the game is still playable
     res.json({
       game,
       player: { ...player, sessionToken: undefined },
@@ -274,6 +292,7 @@ gameRouter.get('/:slug/state', async (req, res) => {
       settlements: rawState.settlements,
       armies: rawState.armies,
       visibility: {},
+      combatLogs: latestCombatLogs,
     });
   }
 });

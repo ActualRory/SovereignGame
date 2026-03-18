@@ -8,6 +8,8 @@ export function TurnBar() {
   const game = useStore(s => s.game) as Record<string, unknown> | null;
   const player = useStore(s => s.player) as Record<string, unknown> | null;
   const players = useStore(s => s.players);
+  const pendingOrders = useStore(s => s.pendingOrders);
+  const resetOrders = useStore(s => s.resetOrders);
   const [submitting, setSubmitting] = useState(false);
 
   if (!game || !player || game.status !== 'active') return null;
@@ -27,20 +29,21 @@ export function TurnBar() {
     if (!sessionToken) return;
 
     try {
-      // Submit current orders (empty for now — will be populated as we build order UIs)
       const orders = {
-        taxRate: (player as any).taxRate ?? 'low',
-        constructions: [],
-        settlementUpgrades: [],
-        techResearch: null,
-        recruitments: [],
-        movements: [],
+        taxRate: pendingOrders.taxRate || (player as any).taxRate || 'low',
+        constructions: pendingOrders.constructions,
+        settlementUpgrades: pendingOrders.settlementUpgrades,
+        techResearch: pendingOrders.techResearch,
+        recruitments: pendingOrders.recruitments,
+        movements: pendingOrders.movements,
+        hireGenerals: pendingOrders.hireGenerals,
+        createArmies: pendingOrders.createArmies,
+        newSettlements: pendingOrders.newSettlements,
         siegeAssaults: [],
         unitReassignments: [],
         lettersSent: [],
         tradeProposals: [],
         tradeCancellations: [],
-        newSettlements: [],
       };
 
       const res = await fetch(`/api/games/${slug}/orders`, {
@@ -62,6 +65,8 @@ export function TurnBar() {
           player: { ...player, hasSubmitted: true } as any,
           players: updatedPlayers,
         });
+        // Clear pending orders after successful submission
+        resetOrders((player as any).taxRate ?? 'low');
       }
     } catch (err) {
       console.error('Failed to submit turn:', err);

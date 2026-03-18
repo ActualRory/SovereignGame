@@ -23,6 +23,8 @@ export interface TurnOrders {
   movements: MovementOrder[];
   siegeAssaults: SiegeAssaultOrder[];
   unitReassignments: UnitReassignmentOrder[];
+  hireGenerals: HireGeneralOrder[];
+  createArmies: CreateArmyOrder[];
 
   // Diplomacy
   lettersSent: string[]; // letter IDs (composed separately)
@@ -75,6 +77,18 @@ export interface TradeProposalOrder {
   isStanding: boolean;
 }
 
+export interface HireGeneralOrder {
+  settlementId: string;
+  name: string;
+  isAdmiral: boolean;
+}
+
+export interface CreateArmyOrder {
+  hexQ: number;
+  hexR: number;
+  name: string;
+}
+
 export interface NewSettlementOrder {
   hexQ: number;
   hexR: number;
@@ -92,6 +106,8 @@ export function emptyOrders(currentTaxRate: TaxRate): TurnOrders {
     movements: [],
     siegeAssaults: [],
     unitReassignments: [],
+    hireGenerals: [],
+    createArmies: [],
     lettersSent: [],
     tradeProposals: [],
     tradeCancellations: [],

@@ -5,6 +5,7 @@ import {
   hexToPixel, hexCorners, roundHex, pixelToHex,
   TERRAIN_COLORS, TERRAIN_COLORS_SELECTED,
 } from './hex-layout.js';
+import { findPath, hexKey, type HexCoord, type TerrainType, type HexDirection } from '@kingdoms/shared';
 
 /**
  * PixiJS hex map renderer.
@@ -19,13 +20,20 @@ export function MapCanvas() {
   const settlements = useStore(s => s.settlements);
   const armies = useStore(s => s.armies);
   const players = useStore(s => s.players);
+  const player = useStore(s => s.player);
   const selectedHex = useStore(s => s.selectedHex);
+  const selectedArmyId = useStore(s => s.selectedArmyId);
+  const pendingOrders = useStore(s => s.pendingOrders);
   const setSelectedHex = useStore(s => s.setSelectedHex);
+  const setSelectedArmyId = useStore(s => s.setSelectedArmyId);
+  const addMovement = useStore(s => s.addMovement);
 
   const selectedHexRef = useRef(selectedHex);
   selectedHexRef.current = selectedHex;
   const setSelectedHexRef = useRef(setSelectedHex);
   setSelectedHexRef.current = setSelectedHex;
+  const selectedArmyIdRef = useRef(selectedArmyId);
+  selectedArmyIdRef.current = selectedArmyId;
 
   // Initialize PixiJS application
   useEffect(() => {
@@ -84,11 +92,83 @@ export function MapCanvas() {
           const worldY = (e.clientY - rect.top - world.y) / world.scale.y;
           const frac = pixelToHex(worldX, worldY);
           const hex = roundHex(frac.q, frac.r);
-          setSelectedHexRef.current(hex);
+
+          if (e.button === 2) {
+            // Right-click: set movement order for selected army
+            handleRightClick(hex);
+          } else {
+            // Left-click: select hex and auto-select army
+            setSelectedHexRef.current(hex);
+            autoSelectArmy(hex);
+          }
         }
 
         isDragging = false;
       });
+
+      app.canvas.addEventListener('contextmenu', (e: Event) => {
+        e.preventDefault();
+      });
+
+      function autoSelectArmy(hex: { q: number; r: number }) {
+        const state = useStore.getState();
+        const playerId = (state.player as any)?.id;
+        if (!playerId) return;
+        const myArmiesHere = state.armies.filter(
+          (a: any) => a.ownerId === playerId && a.hexQ === hex.q && a.hexR === hex.r
+        );
+        if (myArmiesHere.length === 1) {
+          state.setSelectedArmyId((myArmiesHere[0] as any).id);
+        } else if (myArmiesHere.length === 0) {
+          state.setSelectedArmyId(null);
+        }
+        // If multiple armies, keep current selection if it's here, else pick first
+        else {
+          const currentId = selectedArmyIdRef.current;
+          const stillHere = myArmiesHere.some((a: any) => a.id === currentId);
+          if (!stillHere) {
+            state.setSelectedArmyId((myArmiesHere[0] as any).id);
+          }
+        }
+      }
+
+      function handleRightClick(targetHex: { q: number; r: number }) {
+        const state = useStore.getState();
+        const armyId = selectedArmyIdRef.current;
+        if (!armyId) return;
+
+        const army = state.armies.find((a: any) => a.id === armyId) as any;
+        if (!army) return;
+
+        const playerId = (state.player as any)?.id;
+        if (army.ownerId !== playerId) return;
+
+        const start: HexCoord = { q: army.hexQ, r: army.hexR };
+        const goal: HexCoord = { q: targetHex.q, r: targetHex.r };
+
+        if (start.q === goal.q && start.r === goal.r) return;
+
+        // Build hex data map for pathfinding
+        const hexData = new Map<string, { terrain: TerrainType; passable: boolean }>();
+        const riverEdges = new Map<string, HexDirection[]>();
+        for (const h of state.hexes) {
+          const hx = h as any;
+          const key = hexKey({ q: hx.q, r: hx.r });
+          hexData.set(key, {
+            terrain: hx.terrain as TerrainType,
+            passable: hx.terrain !== 'coast', // coast = water, impassable for land armies
+          });
+          if (hx.riverEdges?.length > 0) {
+            riverEdges.set(key, hx.riverEdges as HexDirection[]);
+          }
+        }
+
+        const result = findPath(start, goal, hexData, riverEdges);
+        if (result) {
+          // Store path excluding the starting hex (movement order is the remaining path)
+          state.addMovement(armyId, result.path.slice(1));
+        }
+      }
 
       app.canvas.addEventListener('wheel', (e: WheelEvent) => {
         e.preventDefault();
@@ -239,10 +319,53 @@ export function MapCanvas() {
       }
     }
 
+    // ── Movement paths ──
+    for (const movement of pendingOrders.movements) {
+      const army = armies.find((a: any) => a.id === movement.armyId) as any;
+      if (!army) continue;
+
+      const pg = new Graphics();
+      const ownerColor = playerColors.get(army.ownerId);
+      const pathColor = ownerColor ? parseInt(ownerColor.replace('#', ''), 16) : 0xFFFFFF;
+
+      // Draw line from army position through path
+      const startPos = hexToPixel(army.hexQ, army.hexR);
+      pg.moveTo(startPos.x, startPos.y);
+
+      for (const step of movement.path) {
+        const stepPos = hexToPixel(step.q, step.r);
+        pg.lineTo(stepPos.x, stepPos.y);
+      }
+      pg.stroke({ color: pathColor, width: 3, alpha: 0.8 });
+
+      // Draw destination marker
+      if (movement.path.length > 0) {
+        const dest = movement.path[movement.path.length - 1];
+        const destPos = hexToPixel(dest.q, dest.r);
+        pg.circle(destPos.x, destPos.y, 6);
+        pg.stroke({ color: pathColor, width: 2 });
+        pg.fill({ color: pathColor, alpha: 0.3 });
+      }
+
+      iconLayer.addChild(pg);
+    }
+
+    // ── Selected army highlight ──
+    if (selectedArmyId) {
+      const selArmy = armies.find((a: any) => a.id === selectedArmyId) as any;
+      if (selArmy) {
+        const sg = new Graphics();
+        const pos = hexToPixel(selArmy.hexQ, selArmy.hexR);
+        sg.circle(pos.x, pos.y + 8, 8);
+        sg.stroke({ color: 0xFFD700, width: 2 });
+        iconLayer.addChild(sg);
+      }
+    }
+
     if (hexes.length === 0) {
       renderDemoMap(terrainLayer, corners);
     }
-  }, [hexes, settlements, armies, players, selectedHex]);
+  }, [hexes, settlements, armies, players, selectedHex, selectedArmyId, pendingOrders]);
 
   return <div ref={canvasRef} style={{ width: '100%', height: '100%' }} />;
 }

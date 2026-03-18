@@ -42,6 +42,10 @@ export function GamePage() {
 
     socket.on('turn_resolved', () => {
       fetchState();
+      // Reset pending orders for the new turn
+      const state = useStore.getState();
+      const taxRate = (state.player as any)?.taxRate ?? 'low';
+      state.resetOrders(taxRate);
     });
 
     socket.on('turn_started', () => {

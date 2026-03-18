@@ -11,14 +11,14 @@ import {
   calculateSettlementProduction, calculateTaxIncome,
   calculateUpkeep, calculateFoodConsumption, getStorageCap,
   calculatePopGrowth, calculateStarvation,
-  BUILDINGS, COST_TIERS, TECH_TREE, SETTLEMENT_TIERS,
-  STABILITY_PER_TURN,
+  BUILDINGS, COST_TIERS, TECH_TREE, SETTLEMENT_TIERS, UNITS, TERRAIN,
+  STABILITY_PER_TURN, RIVER_CROSSING_COST,
   getNextTier, TIER_ORDER,
-  hexNeighbors, hexKey,
+  hexNeighbors, hexKey, hexDistance, hasRiverBetween,
   updateArmySupply, calculateHexSupply, ATTRITION_STRENGTH_LOSS,
   type TurnOrders, emptyOrders,
   type TaxRate, type BuildingType, type ResourceType, type SettlementTier,
-  type TerrainType, type Season,
+  type TerrainType, type UnitType, type HexDirection, type Season,
 } from '@kingdoms/shared';
 
 export interface TurnResult {
@@ -447,6 +447,235 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         description: `${player.countryName} founded ${settlement.name}`,
         playerIds: [player.id],
       });
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 6b: Recruitment
+  // ══════════════════════════════════════════════
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
+
+    for (const recruit of orders.recruitments) {
+      const [settlement] = await db.select().from(schema.settlements)
+        .where(eq(schema.settlements.id, recruit.settlementId));
+      if (!settlement || settlement.ownerId !== player.id) continue;
+
+      // Verify army exists and belongs to player
+      const [army] = await db.select().from(schema.armies)
+        .where(eq(schema.armies.id, recruit.armyId));
+      if (!army || army.ownerId !== player.id) continue;
+
+      // Army must be at the settlement's hex
+      if (army.hexQ !== settlement.hexQ || army.hexR !== settlement.hexR) continue;
+
+      const unitType = recruit.unitType as UnitType;
+      const unitDef = UNITS[unitType];
+      if (!unitDef) continue;
+
+      // Check equipment in settlement storage
+      const storage = { ...(settlement.storage as Record<string, number>) };
+      let hasEquipment = true;
+      for (const equip of unitDef.equipment) {
+        if ((storage[equip] ?? 0) < 1) { hasEquipment = false; break; }
+      }
+      if (!hasEquipment) continue;
+
+      // Check settlement has barracks (required for recruitment)
+      const buildings = await db.select().from(schema.buildings)
+        .where(eq(schema.buildings.settlementId, settlement.id));
+      const hasBarracks = buildings.some(b => b.type === 'barracks' && !b.isConstructing);
+      if (!hasBarracks) continue;
+
+      // Deduct equipment
+      for (const equip of unitDef.equipment) {
+        storage[equip] = (storage[equip] ?? 0) - 1;
+      }
+      await db.update(schema.settlements)
+        .set({ storage })
+        .where(eq(schema.settlements.id, settlement.id));
+
+      // Recruit gold cost: 200 per unit
+      const recruitCost = 200;
+      const playerRow = updatedPlayers.find(p => p.id === player.id);
+      if (!playerRow || playerRow.gold < recruitCost) continue;
+      await db.update(schema.players)
+        .set({ gold: playerRow.gold - recruitCost })
+        .where(eq(schema.players.id, player.id));
+
+      // Create the unit
+      await db.insert(schema.units).values({
+        armyId: army.id,
+        type: unitType,
+        position: unitDef.defaultPosition,
+        strengthPct: 100,
+        state: 'full',
+        veterancy: 'fresh',
+        xp: 0,
+      });
+
+      events.push({
+        type: 'unit_recruited',
+        description: `${player.countryName} recruited ${unitType} in ${settlement.name}`,
+        playerIds: [player.id],
+      });
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 6c: Hire Generals & Create Armies
+  // ══════════════════════════════════════════════
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
+
+    // Hire generals
+    for (const hireOrder of (orders.hireGenerals ?? [])) {
+      const [settlement] = await db.select().from(schema.settlements)
+        .where(eq(schema.settlements.id, hireOrder.settlementId));
+      if (!settlement || settlement.ownerId !== player.id) continue;
+
+      // General costs 1000 gold
+      const generalCost = 1000;
+      const playerRow = updatedPlayers.find(p => p.id === player.id);
+      if (!playerRow || playerRow.gold < generalCost) continue;
+
+      await db.update(schema.players)
+        .set({ gold: playerRow.gold - generalCost })
+        .where(eq(schema.players.id, player.id));
+
+      await db.insert(schema.generals).values({
+        gameId,
+        ownerId: player.id,
+        name: hireOrder.name || `General ${player.countryName}`,
+        commandRating: 2,
+        isAdmiral: hireOrder.isAdmiral ?? false,
+      });
+
+      events.push({
+        type: 'general_hired',
+        description: `${player.countryName} hired general ${hireOrder.name}`,
+        playerIds: [player.id],
+      });
+    }
+
+    // Create new armies
+    for (const armyOrder of (orders.createArmies ?? [])) {
+      // Must be on an owned hex
+      const targetHex = allHexes.find(
+        h => h.q === armyOrder.hexQ && h.r === armyOrder.hexR && h.ownerId === player.id
+      );
+      if (!targetHex) continue;
+
+      await db.insert(schema.armies).values({
+        gameId,
+        ownerId: player.id,
+        name: armyOrder.name || `${player.countryName} Army`,
+        hexQ: armyOrder.hexQ,
+        hexR: armyOrder.hexR,
+      });
+
+      events.push({
+        type: 'army_created',
+        description: `${player.countryName} raised ${armyOrder.name}`,
+        playerIds: [player.id],
+      });
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 9: Movement (all armies advance simultaneously)
+  // ══════════════════════════════════════════════
+  // First, set movement paths from orders
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
+
+    for (const moveOrder of orders.movements) {
+      const [army] = await db.select().from(schema.armies)
+        .where(eq(schema.armies.id, moveOrder.armyId));
+      if (!army || army.ownerId !== player.id) continue;
+      if (moveOrder.path.length < 2) continue;
+
+      await db.update(schema.armies)
+        .set({ movementPath: moveOrder.path as any })
+        .where(eq(schema.armies.id, army.id));
+    }
+  }
+
+  // Build hex data map and river edges map for movement cost
+  const hexDataForMovement = await db.select().from(schema.gameHexes)
+    .where(eq(schema.gameHexes.gameId, gameId));
+
+  const hexTerrainMap = new Map<string, TerrainType>();
+  const hexRiverEdges = new Map<string, HexDirection[]>();
+  for (const h of hexDataForMovement) {
+    const key = hexKey({ q: h.q, r: h.r });
+    hexTerrainMap.set(key, h.terrain as TerrainType);
+    hexRiverEdges.set(key, (h.riverEdges ?? []) as HexDirection[]);
+  }
+
+  // Resolve movement: each army spends movement points to advance along its path
+  const BASE_MOVEMENT_POINTS = 4; // points per turn
+
+  const movingArmies = await db.select().from(schema.armies)
+    .where(eq(schema.armies.gameId, gameId));
+
+  for (const army of movingArmies) {
+    const path = army.movementPath as Array<{ q: number; r: number }> | null;
+    if (!path || path.length < 2) continue;
+
+    let remainingMP = BASE_MOVEMENT_POINTS;
+    let currentQ = army.hexQ;
+    let currentR = army.hexR;
+    let pathIndex = 0;
+
+    // Find where we are on the path
+    for (let i = 0; i < path.length; i++) {
+      if (path[i].q === currentQ && path[i].r === currentR) {
+        pathIndex = i;
+        break;
+      }
+    }
+
+    // Advance along the path spending movement points
+    while (pathIndex < path.length - 1 && remainingMP > 0) {
+      const nextHex = path[pathIndex + 1];
+      const nextKey = hexKey(nextHex);
+      const terrain = hexTerrainMap.get(nextKey);
+      if (!terrain) break; // invalid hex
+
+      // Mountains are impassable for armies (unless there's a road — future feature)
+      if (terrain === 'mountains') break;
+
+      let moveCost = TERRAIN[terrain].movementCost;
+
+      // River crossing penalty
+      if (hasRiverBetween(
+        { q: currentQ, r: currentR },
+        nextHex,
+        hexRiverEdges,
+      )) {
+        moveCost += RIVER_CROSSING_COST;
+      }
+
+      if (remainingMP < moveCost) break; // not enough MP
+
+      remainingMP -= moveCost;
+      currentQ = nextHex.q;
+      currentR = nextHex.r;
+      pathIndex++;
+    }
+
+    // Update army position
+    if (currentQ !== army.hexQ || currentR !== army.hexR) {
+      // Clear path if we've reached the end
+      const reachedEnd = pathIndex >= path.length - 1;
+      await db.update(schema.armies)
+        .set({
+          hexQ: currentQ,
+          hexR: currentR,
+          movementPath: reachedEnd ? null : path as any,
+        })
+        .where(eq(schema.armies.id, army.id));
     }
   }
 

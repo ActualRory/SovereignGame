@@ -69,6 +69,27 @@ diplomacyRouter.post('/:slug/letters/:letterId/read', async (req, res) => {
   res.json({ success: true });
 });
 
+/** DELETE /api/games/:slug/letters/:letterId — Recall an undelivered letter. */
+diplomacyRouter.delete('/:slug/letters/:letterId', async (req, res) => {
+  const sessionToken = req.headers['x-session-token'] as string;
+  if (!sessionToken) { res.status(401).json({ error: 'Session token required' }); return; }
+
+  const [player] = await db.select().from(schema.players).where(eq(schema.players.sessionToken, sessionToken));
+  if (!player) { res.status(403).json({ error: 'Invalid session' }); return; }
+
+  const { letterId } = req.params;
+  const [letter] = await db.select().from(schema.letters).where(eq(schema.letters.id, letterId));
+  if (!letter || letter.senderId !== player.id) { res.status(404).json({ error: 'Letter not found' }); return; }
+
+  if (letter.isDelivered) {
+    res.status(400).json({ error: 'Cannot recall a delivered letter' });
+    return;
+  }
+
+  await db.delete(schema.letters).where(eq(schema.letters.id, letterId));
+  res.json({ success: true, letter });
+});
+
 /** POST /api/games/:slug/diplomacy/propose — Propose alliance/NAP. */
 diplomacyRouter.post('/:slug/diplomacy/propose', async (req, res) => {
   const { slug } = req.params;

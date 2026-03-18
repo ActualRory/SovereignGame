@@ -899,3 +899,318 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--text-muted);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
+
+/* ─── Writing Desk ─── */
+
+.writing-desk {
+  border: 2px solid var(--border-dark);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(139, 109, 71, 0.06) 0%, transparent 50%),
+    var(--bg-parchment-dark);
+  padding: 20px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 4px 20px rgba(0, 0, 0, 0.12);
+}
+
+.writing-desk-title {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+}
+
+/* Desk tab bar */
+.desk-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--border-dark);
+  margin-bottom: 16px;
+}
+
+.desk-tab {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.desk-tab:hover {
+  color: var(--text-secondary);
+  background: rgba(139, 109, 71, 0.06);
+}
+
+.desk-tab.active {
+  color: var(--accent-red);
+  border-bottom-color: var(--accent-red);
+  font-weight: 600;
+}
+
+.desk-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent-red);
+  color: white;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ─── Letter Paper (compose, inbox, outbox items) ─── */
+
+.letter-paper {
+  position: relative;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 31px,
+      rgba(139, 109, 71, 0.1) 31px,
+      rgba(139, 109, 71, 0.1) 32px
+    ),
+    linear-gradient(145deg, #faf3e3 0%, #f5e6c8 50%, #efe0c0 100%);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 20px 24px;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    inset 0 0 40px rgba(139, 109, 71, 0.04);
+}
+
+/* Subtle fold line */
+.letter-paper::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 40px;
+  bottom: 0;
+  width: 1px;
+  background: rgba(139, 109, 71, 0.12);
+}
+
+.letter-header-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border-color);
+}
+
+.letter-label {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-style: italic;
+}
+
+.letter-select {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.4);
+  font-family: var(--font-heading);
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.letter-select:focus {
+  outline: none;
+  border-color: var(--border-dark);
+  box-shadow: 0 0 0 2px rgba(139, 109, 71, 0.15);
+}
+
+/* Compose area */
+.letter-body {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 32px;
+  color: var(--text-primary);
+  resize: vertical;
+  padding: 8px 0 8px 0;
+  min-height: 180px;
+}
+
+.letter-body::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.letter-body:focus {
+  outline: none;
+}
+
+/* Footer: signature + send */
+.letter-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.letter-signature {
+  font-family: var(--font-heading);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.letter-send-btn {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  padding: 8px 20px;
+  letter-spacing: 0.3px;
+}
+
+/* ─── Letter Stack (inbox / outbox) ─── */
+
+.letter-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.desk-empty {
+  font-style: italic;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 32px 16px;
+  font-size: 14px;
+}
+
+/* ─── Received Letters ─── */
+
+.letter-received {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.letter-received:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.letter-unread {
+  border-left: 4px solid var(--accent-red);
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 31px,
+      rgba(139, 109, 71, 0.1) 31px,
+      rgba(139, 109, 71, 0.1) 32px
+    ),
+    linear-gradient(145deg, #faf6ef 0%, #f8efe0 50%, #f2e8d4 100%);
+}
+
+.letter-read {
+  opacity: 0.8;
+  border-left: 4px solid transparent;
+}
+
+.letter-from {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.letter-status {
+  font-family: var(--font-body);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--bg-parchment-dark);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.letter-status-new {
+  background: var(--accent-red);
+  color: white;
+  font-weight: 600;
+}
+
+.letter-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  white-space: pre-wrap;
+}
+
+.letter-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 10px;
+  font-style: italic;
+}
+
+/* ─── Sent Letters ─── */
+
+.letter-sent {
+  transition: transform 0.15s;
+}
+
+.letter-sent:hover {
+  transform: translateY(-1px);
+}
+
+.letter-delivered {
+  opacity: 0.75;
+}
+
+.letter-in-transit {
+  border-right: 4px solid var(--accent-gold);
+}
+
+.letter-status-delivered {
+  background: var(--accent-green);
+  color: white;
+}
+
+.letter-status-transit {
+  background: var(--accent-gold);
+  color: white;
+  font-weight: 600;
+}
+
+.letter-recall-btn {
+  margin-top: 10px;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  padding: 4px 12px;
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
+.letter-recall-btn:hover {
+  background: rgba(44, 95, 138, 0.08);
+}

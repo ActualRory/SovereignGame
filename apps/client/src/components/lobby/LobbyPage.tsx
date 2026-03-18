@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
 interface LobbyPlayer {
@@ -34,30 +34,45 @@ export function LobbyPage() {
   const [players, setPlayers] = useState<LobbyPlayer[]>([]);
   const [joinName, setJoinName] = useState('');
   const [error, setError] = useState('');
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
+
+  // Local editing state — separate from polled server data
+  const [editCountry, setEditCountry] = useState<string | null>(null);
+  const [editRuler, setEditRuler] = useState<string | null>(null);
+  const isEditingRef = useRef(false);
 
   const sessionToken = slug ? localStorage.getItem(`session:${slug}`) : null;
   const isHost = sessionToken && game?.hostPlayerId
     && players.find(p => p.id === game.hostPlayerId);
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
 
-  // Load lobby state
-  useEffect(() => {
+  const fetchLobby = useCallback(async () => {
     if (!slug) return;
-    fetchLobby();
-
-    const interval = setInterval(fetchLobby, 3000);
-    return () => clearInterval(interval);
-  }, [slug]);
-
-  async function fetchLobby() {
     try {
-      const res = await fetch(`/api/lobbies/${slug}`, {
-        headers: sessionToken ? { 'x-session-token': sessionToken } : {},
-      });
+      const headers: Record<string, string> = {};
+      const token = localStorage.getItem(`session:${slug}`);
+      if (token) headers['x-session-token'] = token;
+
+      const res = await fetch(`/api/lobbies/${slug}`, { headers });
       if (!res.ok) { setError('Game not found'); return; }
       const data = await res.json();
       setGame(data.game);
-      setPlayers(data.players);
+
+      // Only update players from server if we're not mid-edit
+      if (!isEditingRef.current) {
+        setPlayers(data.players);
+      } else {
+        // Update other players but keep our local edits
+        setPlayers(prev => {
+          return data.players.map((sp: LobbyPlayer) => {
+            if (sp.id === data.myPlayerId) {
+              const local = prev.find(p => p.id === data.myPlayerId);
+              return local ?? sp;
+            }
+            return sp;
+          });
+        });
+      }
+
       if (data.myPlayerId) setMyPlayerId(data.myPlayerId);
 
       if (data.game.status === 'active') {
@@ -66,7 +81,14 @@ export function LobbyPage() {
     } catch {
       setError('Failed to load lobby');
     }
-  }
+  }, [slug, navigate]);
+
+  // Load lobby state
+  useEffect(() => {
+    fetchLobby();
+    const interval = setInterval(fetchLobby, 3000);
+    return () => clearInterval(interval);
+  }, [fetchLobby]);
 
   async function joinGame() {
     if (!slug) return;
@@ -116,7 +138,6 @@ export function LobbyPage() {
       headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken },
       body: JSON.stringify(updates),
     });
-    fetchLobby();
   }
 
   if (error && !game) {
@@ -128,6 +149,10 @@ export function LobbyPage() {
   }
 
   const me = players.find(p => p.id === myPlayerId);
+
+  // Use local edit state when focused, server state otherwise
+  const displayCountry = editCountry !== null ? editCountry : (me?.countryName ?? '');
+  const displayRuler = editRuler !== null ? editRuler : (me?.rulerName ?? '');
 
   return (
     <div className="lobby-page">
@@ -161,13 +186,20 @@ export function LobbyPage() {
                 <input
                   type="text"
                   className="input"
-                  value={me.countryName}
-                  onChange={e => {
-                    const val = e.target.value;
-                    // Optimistic update
-                    setPlayers(prev => prev.map(p => p.id === me.id ? { ...p, countryName: val } : p));
+                  value={displayCountry}
+                  onFocus={() => {
+                    isEditingRef.current = true;
+                    setEditCountry(me.countryName);
                   }}
-                  onBlur={e => updatePlayerSettings({ countryName: e.target.value })}
+                  onChange={e => {
+                    setEditCountry(e.target.value);
+                    setPlayers(prev => prev.map(p => p.id === me.id ? { ...p, countryName: e.target.value } : p));
+                  }}
+                  onBlur={e => {
+                    isEditingRef.current = false;
+                    setEditCountry(null);
+                    updatePlayerSettings({ countryName: e.target.value });
+                  }}
                   style={{ flex: 1, padding: '4px 8px', fontSize: 14 }}
                 />
               </div>
@@ -176,12 +208,20 @@ export function LobbyPage() {
                 <input
                   type="text"
                   className="input"
-                  value={me.rulerName}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setPlayers(prev => prev.map(p => p.id === me.id ? { ...p, rulerName: val } : p));
+                  value={displayRuler}
+                  onFocus={() => {
+                    isEditingRef.current = true;
+                    setEditRuler(me.rulerName);
                   }}
-                  onBlur={e => updatePlayerSettings({ rulerName: e.target.value })}
+                  onChange={e => {
+                    setEditRuler(e.target.value);
+                    setPlayers(prev => prev.map(p => p.id === me.id ? { ...p, rulerName: e.target.value } : p));
+                  }}
+                  onBlur={e => {
+                    isEditingRef.current = false;
+                    setEditRuler(null);
+                    updatePlayerSettings({ rulerName: e.target.value });
+                  }}
                   style={{ flex: 1, padding: '4px 8px', fontSize: 14 }}
                 />
               </div>
@@ -209,8 +249,7 @@ export function LobbyPage() {
                     type="color"
                     value={me.color}
                     onChange={e => {
-                      const val = e.target.value;
-                      setPlayers(prev => prev.map(p => p.id === me.id ? { ...p, color: val } : p));
+                      setPlayers(prev => prev.map(p => p.id === me.id ? { ...p, color: e.target.value } : p));
                     }}
                     onBlur={e => updatePlayerSettings({ color: e.target.value })}
                     style={{ width: 28, height: 28, padding: 0, border: '2px solid var(--border-color)', borderRadius: '50%', cursor: 'pointer' }}

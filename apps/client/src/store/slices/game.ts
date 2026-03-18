@@ -9,6 +9,10 @@ export interface GameState {
   armies: Record<string, unknown>[];
   visibility: Record<string, string>; // hexKey → FogState
   combatLogs: Record<string, unknown>[];
+  techProgress: Record<string, unknown>[];
+  letters: Record<string, unknown>[];
+  diplomacyRelations: Record<string, unknown>[];
+  tradeAgreements: Record<string, unknown>[];
 }
 
 export interface GameSlice extends GameState {
@@ -25,6 +29,10 @@ const initialState: GameState = {
   armies: [],
   visibility: {},
   combatLogs: [],
+  techProgress: [],
+  letters: [],
+  diplomacyRelations: [],
+  tradeAgreements: [],
 };
 
 export const createGameSlice: StateCreator<GameSlice> = (set) => ({

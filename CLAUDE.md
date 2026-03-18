@@ -77,12 +77,16 @@ pnpm dev  # runs both server (:3000) and client (:5173)
 - Combat log viewer (expandable round-by-round detail with dice rolls)
 - Loser retreat mechanics
 
-### Phase 6: Tech + Diplomacy + Trade — NOT STARTED
-- Tech tree (3 eras, prerequisites, research points from buildings)
-- Letter system (compose, send, delivery delay)
-- Alliances (NAP → Alliance → Military Union)
-- Trade (Open Trade → Trade Route → Economic Union)
-- Diplomacy tab, Trade tab, Tech tab
+### Phase 6: Tech + Diplomacy + Trade — COMPLETE
+- Tech tree UI: 3 eras (23 techs), era unlock thresholds, prerequisite checking, research selection
+- Research selection via orders → turn-resolver sets currentResearch + creates progress rows
+- Letter system: compose/send via REST API, delivery delay (1 turn per hex between capitals)
+- Letter delivery in turn-resolver (step 8), inbox/sent views in Diplomacy tab
+- Diplomacy: NAP/Alliance/War proposals, dissolve relations, white peace offers
+- Trade: propose resource exchanges (one-time or standing), cancel agreements
+- Trade resolution in turn-resolver (step 7): standing agreements execute each turn, one-time auto-remove
+- Server API: `/api/games/:slug/letters`, `/api/games/:slug/diplomacy/propose`, letter read marking
+- Tech tab, Diplomacy tab, Trade tab all fully implemented
 
 ### Phase 7: Stability + Notifications + Polish — NOT STARTED
 - Stability system (0-100%, 5 bands, consequences)
@@ -100,11 +104,13 @@ pnpm dev  # runs both server (:3000) and client (:5173)
 ## Turn Resolution Steps (in order)
 
 1. Tax rate changes
-2. Resource production
+2. Resource production (+ research point generation)
 3. Gold income & upkeep
 4. Construction progress
-5. Research progress
+5. Research selection + progress
 6. Settlement upgrades + founding, Recruitment, General hiring, Army creation
+7. Trade resolution (standing + one-time transfers)
+8. Letter delivery (mark delivered when deliveryTurn <= currentTurn)
 9. Movement (all armies advance simultaneously, spending MP by terrain cost)
 10. Combat (collision detection → field battles via combat engine)
 11. Siege assault + capture/raze

@@ -1,6 +1,13 @@
 import type { StateCreator } from 'zustand';
 import type { HexCoord } from '@kingdoms/shared';
 
+export interface TradeProposalOrder {
+  recipientId: string;
+  offeredResources: { resource: string; amount: number }[];
+  requestedResources: { resource: string; amount: number }[];
+  isStanding: boolean;
+}
+
 export interface PendingOrders {
   taxRate: string;
   constructions: Array<{ settlementId: string; buildingType: string }>;
@@ -11,6 +18,8 @@ export interface PendingOrders {
   hireGenerals: Array<{ settlementId: string; name: string; isAdmiral: boolean }>;
   createArmies: Array<{ hexQ: number; hexR: number; name: string }>;
   newSettlements: Array<{ hexQ: number; hexR: number; name: string }>;
+  tradeProposals: TradeProposalOrder[];
+  tradeCancellations: string[];
 }
 
 export interface OrdersSlice {
@@ -33,6 +42,8 @@ const defaultOrders = (taxRate = 'low'): PendingOrders => ({
   hireGenerals: [],
   createArmies: [],
   newSettlements: [],
+  tradeProposals: [],
+  tradeCancellations: [],
 });
 
 export const createOrdersSlice: StateCreator<OrdersSlice> = (set) => ({

@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { lobbyRouter } from './api/lobby.js';
 import { gameRouter } from './api/game.js';
 import { ordersRouter } from './api/orders.js';
+import { diplomacyRouter } from './api/diplomacy.js';
 import { setupSocket } from './socket/handlers.js';
 import { setSocketServer, onTurnDeadline } from './game/turn-manager.js';
 import { startTurnWorker } from './game/timer.js';
@@ -24,6 +25,7 @@ app.use(express.json());
 app.use('/api/lobbies', lobbyRouter);
 app.use('/api/games', gameRouter);
 app.use('/api/games', ordersRouter);
+app.use('/api/games', diplomacyRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {

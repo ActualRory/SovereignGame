@@ -345,8 +345,35 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   }
 
   // ══════════════════════════════════════════════
-  // STEP 5: Research Progress (handled above in Step 2 alongside production)
+  // STEP 5: Research Selection + Progress (points handled in Step 2)
   // ══════════════════════════════════════════════
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
+
+    // Update current research from orders
+    if (orders.techResearch !== undefined) {
+      await db.update(schema.players)
+        .set({ currentResearch: orders.techResearch })
+        .where(eq(schema.players.id, player.id));
+
+      // Ensure tech_progress row exists for the selected tech
+      if (orders.techResearch) {
+        const existing = await db.select().from(schema.techProgress)
+          .where(and(
+            eq(schema.techProgress.gameId, gameId),
+            eq(schema.techProgress.playerId, player.id),
+            eq(schema.techProgress.tech, orders.techResearch),
+          ));
+        if (existing.length === 0) {
+          await db.insert(schema.techProgress).values({
+            gameId,
+            playerId: player.id,
+            tech: orders.techResearch,
+          });
+        }
+      }
+    }
+  }
 
   // ══════════════════════════════════════════════
   // STEP 6: New Settlements & Settlement Upgrades
@@ -594,6 +621,119 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         type: 'army_created',
         description: `${player.countryName} raised ${armyOrder.name}`,
         playerIds: [player.id],
+      });
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 7: Trade Resolution (standing + one-time transfers)
+  // ══════════════════════════════════════════════
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
+
+    // Cancel trades
+    for (const cancelId of (orders.tradeCancellations ?? [])) {
+      await db.delete(schema.tradeAgreements)
+        .where(eq(schema.tradeAgreements.id, cancelId));
+    }
+
+    // New trade proposals → create agreements (auto-accept for V1 simplicity)
+    for (const proposal of (orders.tradeProposals ?? [])) {
+      // Find nearest settlements for both players to check distance
+      await db.insert(schema.tradeAgreements).values({
+        gameId,
+        playerAId: player.id,
+        playerBId: proposal.recipientId,
+        tier: 'trade_route',
+        terms: {
+          offeredResources: proposal.offeredResources,
+          requestedResources: proposal.requestedResources,
+        },
+        isStanding: proposal.isStanding,
+        startedTurn: turnNumber,
+      });
+
+      events.push({
+        type: 'trade_established',
+        description: `${player.countryName} established trade`,
+        playerIds: [player.id, proposal.recipientId],
+      });
+    }
+  }
+
+  // Execute standing trade agreements
+  const activeTradeAgreements = await db.select().from(schema.tradeAgreements)
+    .where(eq(schema.tradeAgreements.gameId, gameId));
+
+  for (const trade of activeTradeAgreements) {
+    const terms = trade.terms as any;
+    if (!terms?.offeredResources || !terms?.requestedResources) continue;
+
+    // Find settlements for both players
+    const [playerASettlement] = await db.select().from(schema.settlements)
+      .where(and(eq(schema.settlements.gameId, gameId), eq(schema.settlements.ownerId, trade.playerAId), eq(schema.settlements.isCapital, true)));
+    const [playerBSettlement] = await db.select().from(schema.settlements)
+      .where(and(eq(schema.settlements.gameId, gameId), eq(schema.settlements.ownerId, trade.playerBId), eq(schema.settlements.isCapital, true)));
+
+    if (!playerASettlement || !playerBSettlement) continue;
+
+    // Transfer: A offers → goes to B's capital storage; B offers (requested) → goes to A's capital storage
+    const storageA = { ...(playerASettlement.storage as Record<string, number>) };
+    const storageB = { ...(playerBSettlement.storage as Record<string, number>) };
+
+    let canFulfill = true;
+    // Check A has offered resources
+    for (const offer of terms.offeredResources) {
+      if ((storageA[offer.resource] ?? 0) < offer.amount) { canFulfill = false; break; }
+    }
+    // Check B has requested resources (what B sends to A)
+    if (canFulfill) {
+      for (const req of terms.requestedResources) {
+        if ((storageB[req.resource] ?? 0) < req.amount) { canFulfill = false; break; }
+      }
+    }
+
+    if (!canFulfill) continue;
+
+    // Execute transfers
+    for (const offer of terms.offeredResources) {
+      storageA[offer.resource] = (storageA[offer.resource] ?? 0) - offer.amount;
+      storageB[offer.resource] = (storageB[offer.resource] ?? 0) + offer.amount;
+    }
+    for (const req of terms.requestedResources) {
+      storageB[req.resource] = (storageB[req.resource] ?? 0) - req.amount;
+      storageA[req.resource] = (storageA[req.resource] ?? 0) + req.amount;
+    }
+
+    await db.update(schema.settlements).set({ storage: storageA }).where(eq(schema.settlements.id, playerASettlement.id));
+    await db.update(schema.settlements).set({ storage: storageB }).where(eq(schema.settlements.id, playerBSettlement.id));
+
+    // Remove one-time agreements after execution
+    if (!trade.isStanding) {
+      await db.delete(schema.tradeAgreements).where(eq(schema.tradeAgreements.id, trade.id));
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 8: Letter Delivery
+  // ══════════════════════════════════════════════
+  const undeliveredLetters = await db.select().from(schema.letters)
+    .where(and(
+      eq(schema.letters.gameId, gameId),
+      eq(schema.letters.isDelivered, false),
+    ));
+
+  for (const letter of undeliveredLetters) {
+    if (turnNumber >= letter.deliveryTurn) {
+      await db.update(schema.letters)
+        .set({ isDelivered: true })
+        .where(eq(schema.letters.id, letter.id));
+
+      const sender = activePlayers.find(p => p.id === letter.senderId);
+      events.push({
+        type: 'letter_delivered',
+        description: `Letter from ${sender?.countryName ?? '?'} has arrived`,
+        playerIds: [letter.recipientId],
       });
     }
   }

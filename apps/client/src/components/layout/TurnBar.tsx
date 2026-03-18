@@ -42,8 +42,8 @@ export function TurnBar() {
         siegeAssaults: [],
         unitReassignments: [],
         lettersSent: [],
-        tradeProposals: [],
-        tradeCancellations: [],
+        tradeProposals: pendingOrders.tradeProposals,
+        tradeCancellations: pendingOrders.tradeCancellations,
       };
 
       const res = await fetch(`/api/games/${slug}/orders`, {

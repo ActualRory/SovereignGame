@@ -208,11 +208,15 @@ gameRouter.get('/:slug/state', async (req, res) => {
   }
 
   // Fetch all game data
-  const [gamePlayers, hexes, allSettlements, allArmies] = await Promise.all([
+  const [gamePlayers, hexes, allSettlements, allArmies, allTechProgress, allRelations, allLetters, allTrades] = await Promise.all([
     db.select().from(schema.players).where(eq(schema.players.gameId, game.id)),
     db.select().from(schema.gameHexes).where(eq(schema.gameHexes.gameId, game.id)),
     db.select().from(schema.settlements).where(eq(schema.settlements.gameId, game.id)),
     db.select().from(schema.armies).where(eq(schema.armies.gameId, game.id)),
+    db.select().from(schema.techProgress).where(eq(schema.techProgress.gameId, game.id)),
+    db.select().from(schema.diplomacyRelations).where(eq(schema.diplomacyRelations.gameId, game.id)),
+    db.select().from(schema.letters).where(eq(schema.letters.gameId, game.id)),
+    db.select().from(schema.tradeAgreements).where(eq(schema.tradeAgreements.gameId, game.id)),
   ]);
 
   // Fetch buildings for each settlement
@@ -247,7 +251,7 @@ gameRouter.get('/:slug/state', async (req, res) => {
       isSpectator: p.isSpectator,
       hasSubmitted: p.hasSubmitted,
       // Include own player's private data
-      ...(p.id === player.id ? { gold: p.gold, stability: p.stability, taxRate: p.taxRate } : {}),
+      ...(p.id === player.id ? { gold: p.gold, stability: p.stability, taxRate: p.taxRate, currentResearch: p.currentResearch } : {}),
     })) as Record<string, unknown>[],
     hexes: hexes as Record<string, unknown>[],
     settlements: allSettlements.map(s => ({
@@ -259,6 +263,18 @@ gameRouter.get('/:slug/state', async (req, res) => {
       units: armyUnits[a.id] ?? [],
     })) as Array<Record<string, unknown> & { units?: unknown[] }>,
   };
+
+  // Player-specific data: own tech, own letters (delivered), diplomacy relations, trade agreements
+  const myTech = allTechProgress.filter(t => t.playerId === player.id);
+  const myLetters = allLetters.filter(l =>
+    (l.recipientId === player.id && l.isDelivered) || l.senderId === player.id
+  );
+  const myRelations = allRelations.filter(r =>
+    r.playerAId === player.id || r.playerBId === player.id
+  );
+  const myTrades = allTrades.filter(t =>
+    t.playerAId === player.id || t.playerBId === player.id
+  );
 
   // Fetch latest combat logs (from previous turn)
   const prevTurn = game.currentTurn - 1;
@@ -281,7 +297,7 @@ gameRouter.get('/:slug/state', async (req, res) => {
 
   try {
     const filtered = await buildFilteredState(game.id, player.id, rawState);
-    res.json({ ...filtered, combatLogs: latestCombatLogs });
+    res.json({ ...filtered, combatLogs: latestCombatLogs, techProgress: myTech, letters: myLetters, diplomacyRelations: myRelations, tradeAgreements: myTrades });
   } catch (err) {
     console.error('Fog filter error:', err);
     res.json({
@@ -293,6 +309,10 @@ gameRouter.get('/:slug/state', async (req, res) => {
       armies: rawState.armies,
       visibility: {},
       combatLogs: latestCombatLogs,
+      techProgress: myTech,
+      letters: myLetters,
+      diplomacyRelations: myRelations,
+      tradeAgreements: myTrades,
     });
   }
 });

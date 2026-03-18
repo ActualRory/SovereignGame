@@ -24,11 +24,15 @@ lobbyRouter.post('/', async (req, res) => {
   const slug = generateSlug();
   const sessionToken = uuid();
 
+  // Auto-assign first available map
+  const [defaultMap] = await db.select().from(schema.maps);
+
   const [game] = await db.insert(schema.games).values({
     slug,
     name: gameName,
     status: 'lobby',
     mode: 'standard',
+    mapId: defaultMap?.id ?? null,
   }).returning();
 
   const [player] = await db.insert(schema.players).values({
@@ -122,6 +126,7 @@ lobbyRouter.patch('/:slug/settings', async (req, res) => {
     earlySubmit?: boolean;
     preExplored?: boolean;
     neutralSettlements?: boolean;
+    mapId?: string;
   };
 
   const [game] = await db.select()
@@ -148,6 +153,7 @@ lobbyRouter.patch('/:slug/settings', async (req, res) => {
   if (settings.earlySubmit !== undefined) updateFields.earlySubmit = settings.earlySubmit;
   if (settings.preExplored !== undefined) updateFields.preExplored = settings.preExplored;
   if (settings.neutralSettlements !== undefined) updateFields.neutralSettlements = settings.neutralSettlements;
+  if (settings.mapId) updateFields.mapId = settings.mapId;
 
   await db.update(schema.games)
     .set(updateFields)

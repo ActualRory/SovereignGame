@@ -53,9 +53,14 @@ export function TurnBar() {
       });
 
       if (res.ok) {
-        // Optimistic update
-        useStore.getState().setGameState({
+        // Optimistic update — update both player and players array
+        const state = useStore.getState();
+        const updatedPlayers = state.players.map((p: any) =>
+          p.id === (player as any).id ? { ...p, hasSubmitted: true } : p
+        );
+        state.setGameState({
           player: { ...player, hasSubmitted: true } as any,
+          players: updatedPlayers,
         });
       }
     } catch (err) {

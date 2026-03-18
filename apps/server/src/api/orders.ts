@@ -71,7 +71,13 @@ ordersRouter.post('/:slug/orders', async (req, res) => {
   }
 
   // Trigger submit logic (checks if all submitted, may resolve turn)
-  await onPlayerSubmit(game.id, player.id);
+  try {
+    await onPlayerSubmit(game.id, player.id);
+  } catch (err) {
+    console.error('Turn submit/resolution error:', err);
+    res.status(500).json({ error: 'Turn resolution failed' });
+    return;
+  }
 
   res.json({ success: true });
 });

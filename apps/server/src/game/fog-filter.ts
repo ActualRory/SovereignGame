@@ -113,10 +113,13 @@ export async function buildFilteredState(
     const prevState = previousVis.get(key);
 
     if (prevState === undefined) {
-      // Insert new row
+      // Insert new row (use onConflict to handle races)
       if (state !== 'undiscovered') {
         await db.insert(schema.hexVisibility).values({
           gameId, playerId, q, r, state,
+        }).onConflictDoUpdate({
+          target: [schema.hexVisibility.gameId, schema.hexVisibility.playerId, schema.hexVisibility.q, schema.hexVisibility.r],
+          set: { state },
         });
       }
     } else if (prevState !== state) {

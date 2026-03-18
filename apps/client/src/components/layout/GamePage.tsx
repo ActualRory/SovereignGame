@@ -11,6 +11,7 @@ import { HexDetailPanel } from '../panels/HexDetailPanel.js';
 export function GamePage() {
   const { slug } = useParams<{ slug: string }>();
   const setGameState = useStore(s => s.setGameState);
+  const gameId = useStore(s => (s.game as Record<string, unknown> | null)?.id as string | undefined);
 
   const fetchState = useCallback(async () => {
     if (!slug) return;
@@ -31,17 +32,15 @@ export function GamePage() {
   // Initial load
   useEffect(() => { fetchState(); }, [fetchState]);
 
-  // Socket.IO for real-time updates
+  // Socket.IO for real-time updates — depends on gameId so it re-runs after initial fetch
   useEffect(() => {
-    if (!slug) return;
+    if (!slug || !gameId) return;
     const sessionToken = localStorage.getItem(`session:${slug}`);
-    const game = useStore.getState().game as Record<string, unknown> | null;
-    if (!sessionToken || !game?.id) return;
+    if (!sessionToken) return;
 
-    const socket = connectToGame(game.id as string, sessionToken);
+    const socket = connectToGame(gameId, sessionToken);
 
     socket.on('turn_resolved', () => {
-      // Refetch full state after turn resolves
       fetchState();
     });
 
@@ -50,12 +49,16 @@ export function GamePage() {
     });
 
     socket.on('player_submitted', ({ playerId }: { playerId: string }) => {
-      // Update submitted status in local state
       const state = useStore.getState();
       const updatedPlayers = state.players.map((p: any) =>
         p.id === playerId ? { ...p, hasSubmitted: true } : p
       );
-      state.setGameState({ players: updatedPlayers });
+      // Also update own player if it's us
+      const currentPlayer = state.player as Record<string, unknown> | null;
+      const updatedPlayer = currentPlayer?.id === playerId
+        ? { ...currentPlayer, hasSubmitted: true }
+        : currentPlayer;
+      state.setGameState({ players: updatedPlayers, player: updatedPlayer });
     });
 
     return () => {
@@ -63,7 +66,7 @@ export function GamePage() {
       socket.off('turn_started');
       socket.off('player_submitted');
     };
-  }, [slug, fetchState]);
+  }, [slug, gameId, fetchState]);
 
   const activeTab = useStore(s => s.activeTab);
 

@@ -260,7 +260,20 @@ gameRouter.get('/:slug/state', async (req, res) => {
     })) as Array<Record<string, unknown> & { units?: unknown[] }>,
   };
 
-  const filtered = await buildFilteredState(game.id, player.id, rawState);
-
-  res.json(filtered);
+  try {
+    const filtered = await buildFilteredState(game.id, player.id, rawState);
+    res.json(filtered);
+  } catch (err) {
+    console.error('Fog filter error:', err);
+    // Fallback: return unfiltered state so the game is still playable
+    res.json({
+      game,
+      player: { ...player, sessionToken: undefined },
+      players: rawState.players,
+      hexes: rawState.hexes,
+      settlements: rawState.settlements,
+      armies: rawState.armies,
+      visibility: {},
+    });
+  }
 });

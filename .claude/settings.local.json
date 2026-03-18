@@ -8,7 +8,16 @@
       "Bash(pnpm config:*)",
       "Bash(pnpm rebuild:*)",
       "Bash(npx drizzle-kit:*)",
-      "Bash(pnpm dev:*)"
+      "Bash(pnpm dev:*)",
+      "Bash(taskkill //F //FI 'WINDOWTITLE eq pnpm*')",
+      "Bash(lsof -ti:3000)",
+      "Bash(xargs kill:*)",
+      "Bash(fuser -k 3000/tcp)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //F //PID 32376)",
+      "Bash(taskkill //F //PID 4468)",
+      "Bash(taskkill //F //PID 32616)",
+      "Bash(taskkill //F //PID 32540)"
     ]
   }
 }

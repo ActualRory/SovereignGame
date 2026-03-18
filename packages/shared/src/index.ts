@@ -23,3 +23,7 @@ export * from './constants/combat.js';
 export * from './constants/stability.js';
 export * from './constants/starting.js';
 export * from './constants/settlements.js';
+
+// Logic
+export * from './logic/economy.js';
+export * from './logic/population.js';

@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import { STARTING_CONDITIONS } from '@kingdoms/shared';
 import { SETTLEMENT_TIERS } from '@kingdoms/shared';
 import { v4 as uuid } from 'uuid';
+import { startTurn } from '../game/turn-manager.js';
 
 export const gameRouter: RouterType = Router();
 
@@ -166,10 +167,13 @@ gameRouter.post('/:slug/start', async (req, res) => {
       .where(eq(schema.players.id, player.id));
   }
 
-  // Start the game
+  // Start the game and the first turn
   await db.update(schema.games)
     .set({ status: 'active', currentTurn: 1 })
     .where(eq(schema.games.id, game.id));
+
+  // Start turn 1 (sets up timer for blitz/standard modes)
+  await startTurn(game.id, 1);
 
   res.json({ success: true, currentTurn: 1 });
 });
@@ -210,12 +214,32 @@ gameRouter.get('/:slug/state', async (req, res) => {
     db.select().from(schema.armies).where(eq(schema.armies.gameId, game.id)),
   ]);
 
+  // Fetch buildings for each settlement
+  const settlementBuildings: Record<string, unknown[]> = {};
+  for (const s of allSettlements) {
+    const buildings = await db.select().from(schema.buildings)
+      .where(eq(schema.buildings.settlementId, s.id));
+    settlementBuildings[s.id] = buildings;
+  }
+
+  // Fetch units for each army
+  const armyUnits: Record<string, unknown[]> = {};
+  for (const a of allArmies) {
+    const units = await db.select().from(schema.units)
+      .where(eq(schema.units.armyId, a.id));
+    armyUnits[a.id] = units;
+  }
+
   // TODO: Apply fog-of-war filtering in Phase 3
   // For now, return full state (no fog)
 
   res.json({
     game,
-    player,
+    player: {
+      ...player,
+      // Don't leak session token
+      sessionToken: undefined,
+    },
     players: gamePlayers.map(p => ({
       id: p.id,
       displayName: p.displayName,
@@ -225,10 +249,17 @@ gameRouter.get('/:slug/state', async (req, res) => {
       color: p.color,
       slotIndex: p.slotIndex,
       isEliminated: p.isEliminated,
+      isSpectator: p.isSpectator,
       hasSubmitted: p.hasSubmitted,
     })),
     hexes,
-    settlements: allSettlements,
-    armies: allArmies,
+    settlements: allSettlements.map(s => ({
+      ...s,
+      buildings: settlementBuildings[s.id] ?? [],
+    })),
+    armies: allArmies.map(a => ({
+      ...a,
+      units: armyUnits[a.id] ?? [],
+    })),
   });
 });

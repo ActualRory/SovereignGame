@@ -1,0 +1,19 @@
+{
+  "name": "kingdoms",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:server": "turbo run dev --filter=@kingdoms/server",
+    "dev:client": "turbo run dev --filter=@kingdoms/client",
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test"
+  },
+  "packageManager": "pnpm@10.30.3",
+  "devDependencies": {
+    "turbo": "^2.8.18",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

@@ -1,5 +1,4 @@
 import type { BuildingType } from '../types/building.js';
-import type { UnitType } from '../types/military.js';
 import type { SettlementTier } from '../types/settlement.js';
 import type { TaxRate } from '../types/economy.js';
 
@@ -14,10 +13,13 @@ export const STARTING_CONDITIONS = {
   /** Starting gold in the treasury. */
   gold: 5000,
   /** Pre-built buildings (4 of 6 Town slots used). */
-  buildings: ['farm', 'library', 'barracks', 'blacksmith'] as BuildingType[],
-  /** Starting military units. */
+  buildings: ['farm', 'library', 'barracks', 'arms_workshop'] as BuildingType[],
+  /**
+   * Starting units — raised from the auto-created Irregulars template.
+   * count = number of units to create; type is determined by the template.
+   */
   units: [
-    { type: 'spearmen' as UnitType, count: 2 },
+    { count: 2 },
   ],
   /** Starting stability. */
   stability: 100,

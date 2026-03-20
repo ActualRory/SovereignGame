@@ -83,3 +83,21 @@ export interface NavalLossSummary {
   endHull: number;
   sunk: boolean;
 }
+
+export interface NavalCombatRound {
+  roundNumber: number;
+  fire1: DiceRoll[];
+  fire2: DiceRoll[];
+  casualties: NavalCasualty[];
+}
+
+export interface NavalCombatResult {
+  id: string;
+  seed: number;
+  attackerFleetId: string;
+  defenderFleetId: string;
+  winner: 'attacker' | 'defender' | 'draw';
+  rounds: NavalCombatRound[];
+  attackerLosses: NavalLossSummary[];
+  defenderLosses: NavalLossSummary[];
+}

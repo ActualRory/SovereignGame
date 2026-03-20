@@ -212,13 +212,14 @@ All resources are physical goods stored in settlements.
 
 **Military chain:**
 - Iron Ore (Mountains/Hills) → Mine → Iron → Foundry → Steel
-- Iron/Steel → Blacksmith → Spears, Swords, Halberds
-- Timber → Bowyer → Bows
-- Iron + Tech → Gunsmith → Rifles
-- Sulphur → Alchemist → Gunpowder
+- Iron/Steel → Arms Workshop → Primary weapons (Greataxe, Greatsword, Polearm, Longbow, Musket, Rifle) and Sidearms (Shortsword, Longsword, Sabre, Handgun) via equipment orders
+- Iron/Steel → Armour Workshop → Armour types (Gambeson, Mail, Plate, Breastplate) via equipment orders
+- Cattle/Wool → Tannery → Leather (used for Gambeson)
+- Sulphur → Alchemist → Gunpowder (required for Musket/Rifle/Handgun)
 - Wool/Cotton (Plains) → Tailor → Uniforms
 - Wild Horses → Stables → Horses
-- Gryphons (Mountains) → Griffin Lodge → Griffins
+- Gryphons (Mountains) → Gryphon Lodge → Gryphons
+- Horse + Gryphon → Demigryph breeding (requires Demigryph Breeding tech)
 
 **Currency:**
 - Gold Ore → Mine → Gold Ingots → Bank → Gold (gp)
@@ -275,16 +276,15 @@ Configured in the Economy tab.
 | Quarry | Basic | Hamlet | Timber | Mountains/Hills |
 | Mine | Standard | Hamlet | Timber | Mountains/Hills |
 | Stables | Standard | Hamlet | Timber | Plains |
-| Griffin Lodge | Advanced | Hamlet | Timber + Stone | Mountains |
+| Gryphon Lodge | Advanced | Hamlet | Timber + Stone | Mountains |
 
 **Processing**
 | Building | Tier | Min Settlement | Materials | Notes |
 |---|---|---|---|---|
-| Blacksmith | Standard | Village | Stone + Timber | Produces Spears, Swords, Halberds |
-| Bowyer | Basic | Village | Timber | Produces Bows, Crossbows |
-| Armourer | Advanced | Town | Stone + Iron | Produces Armour |
+| Arms Workshop | Standard | Village | Stone + Timber | Fulfills equipment orders for weapons (primary + sidearm); each building = +1 production capacity/turn toward active order. Contributes to tax wealth whether producing or not. |
+| Armour Workshop | Advanced | Town | Stone + Iron | Fulfills equipment orders for armour; each building = +1 production capacity/turn. Contributes to tax wealth whether producing or not. |
+| Tannery | Basic | Village | Timber | Produces Leather from Cattle/Wool |
 | Foundry | Advanced | Town | Stone + Iron | Produces Steel (requires Foundry tech) |
-| Gunsmith | Advanced | City | Stone + Steel | Produces Rifles (requires Firearms tech) |
 | Tailor | Standard | Town | Timber | Produces Uniforms |
 | Alchemist | Advanced | Town | Stone + Timber | Produces Gunpowder (requires Alchemy tech) |
 | Bank | Advanced | Town | Stone + Brick | Converts Gold Ingots → Gold (gp) |
@@ -369,7 +369,7 @@ Era-based. Must unlock enough techs in one era to advance to the next.
 
 ### Era Unlock Threshold
 - **3 of 6** Early techs unlocks Middle era
-- **3 of 7** Middle techs unlocks Late era
+- **4 of 9** Middle techs unlocks Late era
 
 ### Early Era
 | Tech | Unlocks | Prereq |
@@ -391,12 +391,16 @@ Era-based. Must unlock enough techs in one era to advance to the next.
 | Economics | +10% trade wealth | Banking |
 | Cartography | +1 vision range | Navigation |
 | Deep Mining | Convert a Hill hex to Stone or Iron production (if producing neither) | Masonry |
+| Gryphon Taming | Gryphon Lodge → Gryphons; Gryphons usable in unit templates | — |
+| Weapon Design | Create named weapon design variants with stat tradeoffs (500g cost, 2-turn developing phase) | — |
 
 ### Late Era
 | Tech | Unlocks | Prereq |
 |---|---|---|
-| Firearms | Gunsmith → Rifles | Foundry + Alchemy |
+| Firearms | Muskets and Rifles produceable at Arms Workshop | Foundry + Alchemy |
 | Non-Proliferation | Flags military goods transfers | Firearms |
+| Demigryph Breeding | Breed Demigryphs (1 Horse + 1 Gryphon → 2 Demigryphs); inherit combined breed bonuses | Gryphon Taming |
+| Advanced Weapon Design | Wider stat budget for weapon design variants | Weapon Design |
 | Advanced Military Logistics | Armies carry replenishment supplies | Military Academy |
 | Maneuver Warfare | +2 frontline width everywhere | Military Academy |
 | Staff College | Staff College building | Military Academy |
@@ -415,75 +419,120 @@ Era-based. Must unlock enough techs in one era to advance to the next.
 - **Reserve pool** for unassigned units
 - Bottom bar showing military resources: Recruits, equipment stockpiles, etc.
 
-### Generals & Admirals
-- Organisational commanders with a **Command rating (1–10)**
-- Gain XP in battle; level up over time
+### Officers
+- Officers are hired independently (not attached to a specific unit at hire time)
+- Three ranks: **Major**, **Colonel**, **General** (land) / **Admiral** (naval)
+- All have a **Command rating (1–10)**; gain XP in battle and level over time
 - Average rating: **2/5** (improves to **3/5** with Staff College researched and built)
 - Hired once **Military Academy** is researched and built
-- In the absence of a General/Admiral, the **Ruler** fills the role
+- In the absence of an assigned officer, the **Ruler** fills the role
+- Officers are assigned to a unit via the Military tab; unassign to reassign elsewhere
 
 ### Unit Naming
 - All units and ships can be given a name and optional subtitle
 - e.g. "The Iron Guard / Unbroken Since Edenmoor"
 
+### Unit Designer
+
+Units are defined by **nation-wide templates**. A template defines the shape of a unit; actual units are instances of a template, each holding their own troops and equipment.
+
+**Template parameters:**
+- **Name** — player-chosen
+- **Type** — Infantry or Mounted
+- **Size** — 1–5 Companies (infantry) or Squadrons (mounted); each company/squadron = 100 troops (MEN_PER_COMPANY)
+- **Primary weapon** — Greataxe, Greatsword, Polearm, Longbow, Musket, or Rifle (or none for Irregulars)
+- **Sidearm** — Shortsword, Longsword, Sabre, or Handgun (optional)
+- **Armour** — Gambeson, Mail, Plate, or Breastplate (optional)
+- **Mount** — Horse, Gryphon, or Demigryph (Mounted units only; requires relevant tech + stockpile)
+
+Stats are derived from the combination of these slots. Ranged primaries (Longbow, Musket, Rifle) determine default position as Backline; mounts default to Flank; otherwise Frontline.
+
+**Stat bonuses by equipment:**
+
+| Primary | Fire | Shock | AP | Notes |
+|---|---|---|---|---|
+| Greataxe | — | +2 | +1 | — |
+| Greatsword | — | +3 | — | +1 Armour stat |
+| Polearm | — | +1 | — | +2 Defence |
+| Longbow | +4 | — | +1 | Ranged |
+| Musket | +5 | — | +2 | Ranged; requires Gunpowder |
+| Rifle | +6 | +1 | +3 | Ranged; requires Firearms tech |
+
+| Sidearm | Fire | Shock | Morale |
+|---|---|---|---|
+| Shortsword | — | +1 | — |
+| Longsword | — | +2 | — |
+| Sabre | — | +1 | +1 |
+| Handgun | +2 | — | — (AP+1) |
+
+| Armour | Armour | Defence | Morale | AP |
+|---|---|---|---|---|
+| Gambeson | +1 | +1 | — | — |
+| Mail | +2 | +1 | — | — |
+| Plate | +4 | — | +1 | — |
+| Breastplate | +2 | — | — | +1 |
+
+| Mount | Shock | Morale | Notes |
+|---|---|---|---|
+| Horse | +1 | +1 | Plains/Hills favoured |
+| Gryphon | +2 | +2 | Flying; +1 Fire; requires Gryphon Taming |
+| Demigryph | varies | varies | Inherits combined Horse + Gryphon breed bonuses |
+
+**Template changes:** Editing a template flags all existing units raised under it as **OUTDATED**. Outdated units function normally but show a badge; they can be **upgraded** when at a settlement with the required equipment difference in stockpile.
+
+### Mounts
+
+Mounts are tracked at hex level with **breeds**. Each hex that produces Horses or Gryphons has a breed tag; units inherit the breed from the settlement's hex at recruitment time.
+
+- **Horse breeds** — 9 common (e.g. Courser, Destrier, Rouncey) + 3 rare (e.g. Shadowmane)
+- **Gryphon breeds** — 4 (e.g. Stormtalon, Embercrest)
+- **Demigryphs** — bred from 1 Horse + 1 Gryphon → 2 Demigryphs; inherit combined stat bonuses of both parent breeds. Requires Demigryph Breeding tech.
+
+Mounts are drafted from settlement stockpile into a **draft pool** before recruitment. Dismiss mounts to return them to stockpile (some losses may occur).
+
+### Weapon Design
+
+With the **Weapon Design** tech, players can create **named variants** of any unlocked base weapon type. Each design has bounded stat tradeoffs — you can shift points between stats within a budget, not simply add them.
+
+- **Cost:** 500 gold per design
+- **Developing phase:** 2 Minor Turns before the design becomes active
+- **Advanced Weapon Design** tech (Late era) widens the stat budget
+- Designs can be retired; existing units using a retired design keep it until upgraded
+- A template may reference a specific weapon design; units raised from that template hold that variant
+
+### Equipment Orders
+
+Equipment is produced on-demand via **equipment orders** placed at workshops. Each order specifies a settlement, equipment type, and quantity.
+
+- Each **Arms Workshop** building = +1 production capacity unit per turn toward the settlement's active order
+- Each **Armour Workshop** building = +1 production capacity unit per turn
+- Multiple workshops at one settlement stack
+- Workshops contribute to **tax wealth** whether producing or not
+- Input materials (Iron, Steel, Timber, Leather, Gunpowder) are consumed as production progresses
+- Fulfilled equipment goes directly into the settlement's stockpile
+
 ### Recruitment
-- Requires the relevant buildings and equipment in the settlement
-- Requires a **General or the Ruler** to be present in the settlement — unless a **Drafting Centre** is built there
-- Takes **1 Minor Turn** regardless of unit type
-- Consumes equipment from stockpile
-- **Era labels are flavour only** — any unit is recruitable if you have the equipment, regardless of tech era. A player without Firearms tech can still recruit Riflemen if they obtain Rifles via trade or capture.
 
-### Equipment Sources
-| Equipment | Building | Input |
-|---|---|---|
-| Spears | Blacksmith | Iron |
-| Swords | Blacksmith | Iron |
-| Halberds | Blacksmith | Steel |
-| Bows | Bowyer | Timber |
-| Crossbows | Bowyer | Timber |
-| Rifles | Gunsmith | Iron + Gunpowder |
-| Armour | Armourer | Steel |
-| Uniforms | Tailor | Wool or Cotton |
-| Horses | Stables | — (Wild Horses resource) |
-| Griffins | Griffin Lodge | — (Gryphon resource) |
+- Requires a matching template to be defined
+- Requires **enough drafted recruits** in the settlement's draft pool (= population × 20% draftable)
+- Requires **equipment** in the settlement stockpile matching the template's slots
+- Requires an assigned officer or the Ruler to be present — unless a **Drafting Centre** is built
+- Takes **1 Minor Turn** regardless of size
+- Equipment moves from stockpile into the unit's **held equipment** on raise; it is NOT consumed
 
-### Unit Roster
+**Equipment held by unit:**
+- A unit holds its equipment as long as it exists
+- **Disband:** held equipment is returned to the nearest settlement's stockpile
+- **Defeat:** a percentage of held equipment is captured by the victor
+- **Replenishment:** requires both recruits and the missing equipment from stockpile
 
-| Unit | Era | Fire | Shock | Defence | Morale | Armour | AP | Hits On | Default Position |
-|---|---|---|---|---|---|---|---|---|---|
-| Irregulars | Early | 1 | 3 | 2 | 2 | 0 | 0 | 14+ | Frontline |
-| Spearmen | Early | 2 | 5 | 4 | 4 | 0 | 0 | 13+ | Frontline |
-| Archers | Early | 6 | 1 | 2 | 3 | 0 | 0 | 13+ | Backline |
-| Cavalry | Early | 1 | 6 | 3 | 5 | 0 | 0 | 12+ | Flank |
-| Swordsmen | Middle | 2 | 6 | 5 | 4 | 0 | 0 | 11+ | Frontline |
-| Crossbowmen | Middle | 7 | 1 | 3 | 4 | 0 | 2 | 12+ | Backline |
-| Men-at-Arms | Middle | 2 | 6 | 7 | 5 | 4 | 0 | 10+ | Frontline |
-| Knights | Middle | 2 | 9 | 5 | 7 | 4 | 0 | 9+ | Flank |
-| Griffin Riders | Middle | 4 | 7 | 5 | 7 | 0 | 0 | 9+ | Flank |
-| Griffin Knights | Middle | 3 | 9 | 7 | 8 | 3 | 0 | 8+ | Flank |
-| Hussars | Late | 3 | 7 | 6 | 7 | 0 | 0 | 10+ | Flank |
-| Riflemen | Late | 9 | 2 | 4 | 5 | 0 | 5 | 10+ | Backline |
-| Dragoons | Late | 6 | 5 | 6 | 6 | 0 | 3 | 10+ | Flank/Backline |
+### Draft Pools
 
-*All Late era units require Uniforms to recruit.*
-*Only Heavy units (Men-at-Arms, Knights, Griffin Knights) have Armour.*
-
-**Equipment per unit:**
-| Unit | Equipment Required |
-|---|---|
-| Irregulars | None |
-| Spearmen | Spears |
-| Archers | Bows |
-| Cavalry | Spears + Horses |
-| Swordsmen | Swords |
-| Crossbowmen | Crossbows |
-| Men-at-Arms | Armour + Halberds |
-| Knights | Spears + Swords + Horses + Armour |
-| Griffin Riders | Griffins + Swords or Spears |
-| Griffin Knights | Griffins + Armour + Halberds |
-| Hussars | Swords + Horses + Uniforms |
-| Riflemen | Rifles + Uniforms |
-| Dragoons | Rifles + Horses + Uniforms |
+Recruits and mounts must be manually drafted before recruitment or replenishment:
+- **Draft Recruits** — moves a number of population into the settlement's recruit pool (available next turn)
+- **Dismiss Recruits** — returns drafted recruits to population
+- **Draft Mounts** — moves horses/gryphons/demigryphs from stockpile into the mount pool
+- **Dismiss Mounts** — returns to stockpile; some losses possible
 
 ### Combat System
 
@@ -512,31 +561,37 @@ Era-based. Must unlock enough techs in one era to advance to the next.
 - **AP** (Armour Piercing) ignores that many points of Armour
 
 #### Unit States
-| State | Strength | Effect |
+
+Units track actual troop counts across three tiers: **Rookie**, **Capable**, **Veteran**.
+
+| State | Condition | Effect |
 |---|---|---|
-| Full | 100–60% | Full dice |
-| Depleted | 60–40% | Reduced dice |
-| Broken | 40–0% | Minimal dice |
-| Destroyed | 0% | Removed from play |
+| Full | ≥ 60% of max troops | Full dice |
+| Depleted | 40–60% of max troops | Reduced dice |
+| Broken | < 40% of max troops | Minimal dice |
+| Destroyed | 0 troops | Removed from play |
+
+Casualties are taken from **Rookies first**, then Capable, then Veteran. Each net hit = 5 troops lost.
+
+Post-battle promotions run automatically: ~15% of surviving Rookies → Capable; ~6% of surviving Capable → Veteran.
 
 #### Replenishment
-- Requires **Recruits** resource + relevant equipment
-- Recruits are drafted manually — costs gold, slightly reduces population in the settlement. Requires a General, Ruler, or Drafting Centre present.
-- Manual order required, takes time, must be in friendly territory
-- Veterancy loss on replenishment:
-  - Depleted → Full: −1 vet level
-  - Broken → Full: −2 vet levels
+- Requires drafted **Recruits** in the settlement's pool + matching **equipment** in stockpile
+- Manual order; unit must be at a friendly settlement
+- Fills casualties as Rookies (the lowest tier)
+- Requires an officer or Ruler present, or a Drafting Centre
 
 #### Veterancy
-| Level | Hits On Bonus |
-|---|---|
-| Fresh | +0 |
-| Regular | +1 |
-| Veteran | +2 |
-| Elite | +3 |
-| Legend | +4 |
 
-- XP gained by: surviving combat, winning engagements, defeating higher-vet units
+Veterancy is a **weighted average** of the unit's troop composition, not a single level:
+
+```
+modifier = (rookies × 0 + capable × 1 + veteran × 2) / total
+```
+
+This modifier reduces the unit's **Hits On** threshold — a fully veteran unit rolls more effectively. A unit that replenishes heavy losses becomes less effective as the new Rookies dilute the average.
+
+- XP / promotions gained through combat — survivors gradually tier up
 - Visible to any player who can see the unit
 
 ### Ship Roster
@@ -650,8 +705,8 @@ Each player begins with:
 | Population | Half of Town pop cap |
 | Territory | Small surrounding hex cluster |
 | Starting gold | 5,000g |
-| Buildings | Farm, Library, Barracks, Blacksmith (4 of 6 slots used) |
-| Starting units | 2× Spearmen |
+| Buildings | Farm, Library, Barracks, Arms Workshop (4 of 6 slots used) |
+| Starting units | 2× Irregulars (auto-created from a default "Irregulars" template) |
 | Government title | Ruler |
 | Stability | 100% |
 

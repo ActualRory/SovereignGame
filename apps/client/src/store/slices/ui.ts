@@ -17,12 +17,15 @@ export interface UiSlice {
   isSelectingMoveTarget: boolean;
   /** Hex detail panel is open (separate from tab overlays) */
   detailPanelHex: { q: number; r: number } | null;
+  /** When set, MapCanvas will pan to this hex then clear it */
+  panToHex: { q: number; r: number } | null;
   setActiveTab: (tab: TabId | null) => void;
   setSelectedHex: (hex: { q: number; r: number } | null) => void;
   setSelectedArmyId: (id: string | null) => void;
   setMapContextMenu: (menu: MapContextMenu | null) => void;
   setIsSelectingMoveTarget: (v: boolean) => void;
   setDetailPanelHex: (hex: { q: number; r: number } | null) => void;
+  setPanToHex: (hex: { q: number; r: number } | null) => void;
 }
 
 export const createUiSlice: StateCreator<UiSlice> = (set) => ({
@@ -32,6 +35,7 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   mapContextMenu: null,
   isSelectingMoveTarget: false,
   detailPanelHex: null,
+  panToHex: null,
   setActiveTab: (tab) => set((state) => ({
     activeTab: state.activeTab === tab ? null : tab,
   })),
@@ -40,4 +44,5 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   setMapContextMenu: (menu) => set({ mapContextMenu: menu }),
   setIsSelectingMoveTarget: (v) => set({ isSelectingMoveTarget: v }),
   setDetailPanelHex: (hex) => set({ detailPanelHex: hex }),
+  setPanToHex: (hex) => set({ panToHex: hex }),
 });

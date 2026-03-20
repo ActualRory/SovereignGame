@@ -3,7 +3,7 @@ import type { TabId } from '../../store/slices/ui.js';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'country', label: 'Country' },
-  { id: 'map', label: 'Map' },
+  { id: 'map', label: 'Atlas' },
   { id: 'economy', label: 'Economy' },
   { id: 'trade', label: 'Trade' },
   { id: 'tech', label: 'Tech' },

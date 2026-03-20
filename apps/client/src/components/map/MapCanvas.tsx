@@ -2,7 +2,7 @@ import { useRef, useEffect } from 'react';
 import { Application, Container, Graphics } from 'pixi.js';
 import { useStore } from '../../store/index.js';
 import {
-  hexToPixel, hexCorners, roundHex, pixelToHex,
+  hexToPixel, hexCorners, roundHex, pixelToHex, HEX_SIZE,
   TERRAIN_COLORS, TERRAIN_COLORS_SELECTED,
 } from './hex-layout.js';
 import { findPath, hexKey, type HexCoord, type TerrainType, type HexDirection } from '@kingdoms/shared';
@@ -18,6 +18,9 @@ export function MapCanvas() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   const worldRef = useRef<Container | null>(null);
+  const hexBoundsRef = useRef<{ minX: number; maxX: number; minY: number; maxY: number } | null>(null);
+  const hasCenteredRef = useRef(false);
+
   const hexes = useStore(s => s.hexes);
   const settlements = useStore(s => s.settlements);
   const armies = useStore(s => s.armies);
@@ -29,6 +32,9 @@ export function MapCanvas() {
   const setSelectedHex = useStore(s => s.setSelectedHex);
   const setSelectedArmyId = useStore(s => s.setSelectedArmyId);
   const isSelectingMoveTarget = useStore(s => s.isSelectingMoveTarget);
+  const panToHex = useStore(s => s.panToHex);
+  const setPanToHex = useStore(s => s.setPanToHex);
+  const setActiveTab = useStore(s => s.setActiveTab);
 
   const selectedHexRef = useRef(selectedHex);
   selectedHexRef.current = selectedHex;
@@ -66,6 +72,8 @@ export function MapCanvas() {
       app.stage.addChild(world);
       worldRef.current = world;
 
+      // Start at container center; initial centering on capital happens via the
+      // settlements effect below once data arrives.
       world.x = container.clientWidth / 2;
       world.y = container.clientHeight / 2;
 
@@ -73,6 +81,17 @@ export function MapCanvas() {
       let isDragging = false;
       let dragStart = { x: 0, y: 0 };
       let worldStart = { x: 0, y: 0 };
+
+      function clampWorld(nx: number, ny: number, scale: number): { x: number; y: number } {
+        const bounds = hexBoundsRef.current;
+        if (!bounds) return { x: nx, y: ny };
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        // Ensure at least some of the map is always visible
+        const cx = Math.max(-bounds.maxX * scale, Math.min(w - bounds.minX * scale, nx));
+        const cy = Math.max(-bounds.maxY * scale, Math.min(h - bounds.minY * scale, ny));
+        return { x: cx, y: cy };
+      }
 
       app.canvas.addEventListener('pointerdown', (e: PointerEvent) => {
         isDragging = true;
@@ -82,8 +101,11 @@ export function MapCanvas() {
 
       app.canvas.addEventListener('pointermove', (e: PointerEvent) => {
         if (!isDragging) return;
-        world.x = worldStart.x + (e.clientX - dragStart.x);
-        world.y = worldStart.y + (e.clientY - dragStart.y);
+        const nx = worldStart.x + (e.clientX - dragStart.x);
+        const ny = worldStart.y + (e.clientY - dragStart.y);
+        const clamped = clampWorld(nx, ny, world.scale.x);
+        world.x = clamped.x;
+        world.y = clamped.y;
       });
 
       app.canvas.addEventListener('pointerup', (e: PointerEvent) => {
@@ -199,8 +221,9 @@ export function MapCanvas() {
 
         const worldBefore = { x: (cx - world.x) / world.scale.x, y: (cy - world.y) / world.scale.y };
         world.scale.set(newScale);
-        world.x = cx - worldBefore.x * newScale;
-        world.y = cy - worldBefore.y * newScale;
+        const clamped = clampWorld(cx - worldBefore.x * newScale, cy - worldBefore.y * newScale, newScale);
+        world.x = clamped.x;
+        world.y = clamped.y;
       }, { passive: false });
     })();
 
@@ -213,6 +236,53 @@ export function MapCanvas() {
       }
     };
   }, []);
+
+  // Update hex bounds whenever the hex grid changes
+  useEffect(() => {
+    if (hexes.length === 0) { hexBoundsRef.current = null; return; }
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const hex of hexes) {
+      const h = hex as any;
+      const pos = hexToPixel(h.q, h.r);
+      if (pos.x < minX) minX = pos.x;
+      if (pos.x > maxX) maxX = pos.x;
+      if (pos.y < minY) minY = pos.y;
+      if (pos.y > maxY) maxY = pos.y;
+    }
+    const pad = HEX_SIZE * 3;
+    hexBoundsRef.current = { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad };
+  }, [hexes]);
+
+  // Center on the player's capital once, as soon as both the canvas and settlements are ready
+  useEffect(() => {
+    if (hasCenteredRef.current) return;
+    if (!worldRef.current || !appRef.current) return;
+    const myPlayer = player as any;
+    if (!myPlayer?.id) return;
+    const capital = (settlements as any[]).find(s => s.ownerId === myPlayer.id && s.isCapital)
+      ?? (settlements as any[]).find(s => s.ownerId === myPlayer.id);
+    if (!capital) return;
+
+    const world = worldRef.current;
+    const app = appRef.current;
+    const pos = hexToPixel(capital.hexQ, capital.hexR);
+    world.x = app.screen.width / 2 - pos.x * world.scale.x;
+    world.y = app.screen.height / 2 - pos.y * world.scale.y;
+    hasCenteredRef.current = true;
+  }, [settlements, player]);
+
+  // Pan to a hex when requested (e.g. from Atlas tab click-to-jump)
+  useEffect(() => {
+    if (!panToHex || !worldRef.current || !appRef.current) return;
+    const world = worldRef.current;
+    const app = appRef.current;
+    const pos = hexToPixel(panToHex.q, panToHex.r);
+    world.x = app.screen.width / 2 - pos.x * world.scale.x;
+    world.y = app.screen.height / 2 - pos.y * world.scale.y;
+    setPanToHex(null);
+    // Close the tab overlay so the map is visible
+    setActiveTab(null);
+  }, [panToHex, setPanToHex, setActiveTab]);
 
   // Draw hexes whenever data or selection changes
   useEffect(() => {

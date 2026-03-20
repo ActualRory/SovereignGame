@@ -1136,6 +1136,60 @@ h3, h4, h5, h6 {
 }
 
 
+/* ─── Atlas Tab ─── */
+
+.atlas-jump-card {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.atlas-jump-card:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--accent-gold);
+}
+
+.atlas-jump-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.atlas-jump-card:hover .atlas-jump-hint {
+  opacity: 1;
+  color: var(--accent-gold);
+}
+
+.atlas-civ-settlement {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.atlas-civ-settlement:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.atlas-civ-settlement:hover .atlas-jump-hint {
+  opacity: 1;
+  color: var(--accent-gold);
+}
+
 /* ─── Writing Desk ─── */
 
 .writing-desk {

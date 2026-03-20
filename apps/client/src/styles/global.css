@@ -41,6 +41,7 @@
   --font-body: 'Crimson Text', serif;
 
   --tab-height: 48px;
+  --top-bar-height: 44px;
 }
 
 * {
@@ -586,34 +587,206 @@ h3, h4, h5, h6 {
   color: var(--text-secondary);
 }
 
-/* ─── Turn Submit Bar ─── */
+/* ─── Top Bar ─── */
 
-.turn-bar {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 15;
-  background:
-    linear-gradient(135deg, rgba(107, 85, 53, 0.08) 0%, transparent 50%),
-    var(--bg-surface);
-  border: 2px solid var(--border-ornate);
-  border-radius: 6px;
-  padding: 10px 16px;
+.top-bar {
+  height: var(--top-bar-height, 44px);
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
-  box-shadow: 0 4px 20px var(--shadow-deep), 0 0 12px var(--glow-gold);
+  justify-content: space-between;
+  padding: 0 12px;
+  background:
+    linear-gradient(180deg, #1e1812 0%, #181410 100%);
+  border-bottom: 2px solid var(--border-ornate);
+  box-shadow: 0 2px 12px var(--shadow-deep);
+  z-index: 20;
+  position: relative;
 }
 
-.turn-bar .turn-info {
-  font-size: 14px;
+@keyframes candleGlow {
+  0%, 100% { box-shadow: 0 2px 12px var(--shadow-deep), 0 0 10px var(--glow-gold); }
+  50% { box-shadow: 0 2px 12px var(--shadow-deep), 0 0 20px var(--glow-gold-strong); }
+}
+
+.top-bar.top-bar-pending {
+  animation: candleGlow 3s ease-in-out infinite;
+}
+
+/* Left section */
+.top-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.top-bar-separator {
+  width: 1px;
+  height: 20px;
+  background: var(--border-color);
+  margin: 0 6px;
+}
+
+/* Bell button */
+.top-bar-bell-wrap {
+  position: relative;
+}
+
+.top-bar-icon-btn {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-ornate);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
   color: var(--text-secondary);
 }
 
-.turn-bar .turn-info strong {
-  color: var(--accent-gold);
+.top-bar-icon-btn:hover {
+  background: var(--bg-surface-hover);
 }
 
+.top-bar-bell-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.top-bar-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  font-size: 9px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  pointer-events: none;
+}
+
+.top-bar-badge-red {
+  background: var(--accent-red);
+  color: #e8d5b0;
+}
+
+/* Notification dropdown (opens downward from bell) */
+.top-bar-notif-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 320px;
+  max-height: 400px;
+  background: var(--bg-surface);
+  border: 2px solid var(--border-ornate);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px var(--shadow-deep), 0 0 8px var(--glow-gold);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+
+/* Letter counts */
+.top-bar-letter-count {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  font-size: 13px;
+}
+
+.top-bar-letter-icon {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.top-bar-count-active {
+  color: var(--accent-gold);
+  font-weight: 700;
+}
+
+.top-bar-count-dim {
+  color: var(--text-muted);
+}
+
+/* Center section */
+.top-bar-center {
+  flex: 0 0 auto;
+  text-align: center;
+}
+
+.top-bar-turn-label {
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--accent-gold);
+  letter-spacing: 0.04em;
+}
+
+/* Right section */
+.top-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.top-bar-spectating {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+/* Submit status with tooltip */
+.top-bar-submit-status {
+  position: relative;
+  cursor: default;
+}
+
+.top-bar-submitted-count {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.top-bar-submit-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--bg-surface);
+  border: 2px solid var(--border-ornate);
+  border-radius: 6px;
+  padding: 8px 12px;
+  min-width: 160px;
+  box-shadow: 0 4px 16px var(--shadow-deep);
+  z-index: 100;
+}
+
+.top-bar-tooltip-player {
+  font-size: 13px;
+  padding: 3px 0;
+}
+
+.top-bar-tooltip-done {
+  color: var(--accent-green);
+}
+
+.top-bar-tooltip-waiting {
+  color: var(--text-muted);
+}
+
+/* End Turn / Submitted button */
 .btn-submit {
   background: linear-gradient(180deg, #5a9a50 0%, var(--accent-green) 100%);
   color: #e8d5b0;
@@ -633,14 +806,11 @@ h3, h4, h5, h6 {
   box-shadow: none;
 }
 
-/* Candle glow pulse when awaiting submission */
-@keyframes candleGlow {
-  0%, 100% { box-shadow: 0 4px 20px var(--shadow-deep), 0 0 12px var(--glow-gold); }
-  50% { box-shadow: 0 4px 20px var(--shadow-deep), 0 0 24px var(--glow-gold-strong); }
-}
-
-.turn-bar:has(.btn-submit:not(:disabled)) {
-  animation: candleGlow 3s ease-in-out infinite;
+.btn-submitted {
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  border-color: var(--border-color);
+  cursor: not-allowed;
 }
 
 /* ─── Combat Log Panel ─── */
@@ -667,38 +837,7 @@ h3, h4, h5, h6 {
   color: var(--accent-red);
 }
 
-/* ─── Notification Bell ─── */
-
-.notification-bell-container {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 16;
-}
-
-.notification-bell-btn {
-  width: 40px;
-  height: 40px;
-  border: 2px solid var(--border-ornate);
-  border-radius: 50%;
-  background: var(--bg-surface);
-  cursor: pointer;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 12px var(--shadow-medium);
-  transition: background 0.15s, box-shadow 0.15s;
-}
-
-.notification-bell-btn:hover {
-  background: var(--bg-surface-hover);
-  box-shadow: 0 2px 12px var(--shadow-medium), 0 0 8px var(--glow-gold);
-}
-
-.bell-icon {
-  font-size: 18px;
-}
+/* ─── Notification Dropdown (shared styles) ─── */
 
 .notification-badge {
   position: absolute;
@@ -717,20 +856,6 @@ h3, h4, h5, h6 {
   padding: 0 4px;
 }
 
-.notification-dropdown {
-  position: absolute;
-  top: 48px;
-  left: 0;
-  width: 320px;
-  max-height: 400px;
-  background: var(--bg-surface);
-  border: 2px solid var(--border-ornate);
-  border-radius: 6px;
-  box-shadow: 0 4px 20px var(--shadow-deep), 0 0 8px var(--glow-gold);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
 
 .notification-header {
   display: flex;
@@ -1010,23 +1135,6 @@ h3, h4, h5, h6 {
   margin: 2px 0;
 }
 
-/* ─── Spectator Banner ─── */
-
-.spectator-banner {
-  position: absolute;
-  top: 60px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 16;
-  background: var(--bg-surface);
-  border: 2px solid var(--border-ornate);
-  border-radius: 6px;
-  padding: 8px 20px;
-  font-family: var(--font-heading);
-  font-size: 14px;
-  color: var(--text-muted);
-  box-shadow: 0 2px 12px var(--shadow-medium);
-}
 
 /* ─── Writing Desk ─── */
 

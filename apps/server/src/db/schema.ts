@@ -78,6 +78,7 @@ export const gameHexes = pgTable('game_hexes', {
   ownerId: uuid('owner_id'),
   claimStartedTurn: integer('claim_started_turn'),
   settlementId: uuid('settlement_id'),
+  customName: text('custom_name'),
 }, (table) => [
   uniqueIndex('game_hex_coord_idx').on(table.gameId, table.q, table.r),
 ]);
@@ -124,6 +125,7 @@ export const armies = pgTable('armies', {
   gameId: uuid('game_id').notNull().references(() => games.id),
   ownerId: uuid('owner_id').notNull().references(() => players.id),
   name: text('name').notNull(),
+  subtitle: text('subtitle'),
   hexQ: integer('hex_q').notNull(),
   hexR: integer('hex_r').notNull(),
   generalId: uuid('general_id'),

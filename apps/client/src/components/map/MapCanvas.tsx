@@ -11,6 +11,8 @@ import { findPath, hexKey, type HexCoord, type TerrainType, type HexDirection } 
  * PixiJS hex map renderer.
  * Renders terrain-colored hexagons with fog of war, rivers,
  * settlement markers, army icons. Supports pan/zoom/click.
+ *
+ * Right-click opens a context menu. Left-click selects hex / picks move target.
  */
 export function MapCanvas() {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -26,7 +28,7 @@ export function MapCanvas() {
   const pendingOrders = useStore(s => s.pendingOrders);
   const setSelectedHex = useStore(s => s.setSelectedHex);
   const setSelectedArmyId = useStore(s => s.setSelectedArmyId);
-  const addMovement = useStore(s => s.addMovement);
+  const isSelectingMoveTarget = useStore(s => s.isSelectingMoveTarget);
 
   const selectedHexRef = useRef(selectedHex);
   selectedHexRef.current = selectedHex;
@@ -34,6 +36,8 @@ export function MapCanvas() {
   setSelectedHexRef.current = setSelectedHex;
   const selectedArmyIdRef = useRef(selectedArmyId);
   selectedArmyIdRef.current = selectedArmyId;
+  const isSelectingMoveTargetRef = useRef(isSelectingMoveTarget);
+  isSelectingMoveTargetRef.current = isSelectingMoveTarget;
 
   // Initialize PixiJS application
   useEffect(() => {
@@ -94,12 +98,23 @@ export function MapCanvas() {
           const hex = roundHex(frac.q, frac.r);
 
           if (e.button === 2) {
-            // Right-click: set movement order for selected army
-            handleRightClick(hex);
+            // Right-click: open context menu
+            const state = useStore.getState();
+            state.setMapContextMenu({
+              x: e.clientX,
+              y: e.clientY,
+              hex,
+            });
           } else {
-            // Left-click: select hex and auto-select army
-            setSelectedHexRef.current(hex);
-            autoSelectArmy(hex);
+            // Left-click
+            if (isSelectingMoveTargetRef.current) {
+              // We're in "select move target" mode
+              handleMoveTarget(hex);
+            } else {
+              // Normal: select hex and auto-select army
+              setSelectedHexRef.current(hex);
+              autoSelectArmy(hex);
+            }
           }
         }
 
@@ -121,9 +136,7 @@ export function MapCanvas() {
           state.setSelectedArmyId((myArmiesHere[0] as any).id);
         } else if (myArmiesHere.length === 0) {
           state.setSelectedArmyId(null);
-        }
-        // If multiple armies, keep current selection if it's here, else pick first
-        else {
+        } else {
           const currentId = selectedArmyIdRef.current;
           const stillHere = myArmiesHere.some((a: any) => a.id === currentId);
           if (!stillHere) {
@@ -132,21 +145,24 @@ export function MapCanvas() {
         }
       }
 
-      function handleRightClick(targetHex: { q: number; r: number }) {
+      function handleMoveTarget(targetHex: { q: number; r: number }) {
         const state = useStore.getState();
         const armyId = selectedArmyIdRef.current;
-        if (!armyId) return;
+        if (!armyId) { state.setIsSelectingMoveTarget(false); return; }
 
         const army = state.armies.find((a: any) => a.id === armyId) as any;
-        if (!army) return;
+        if (!army) { state.setIsSelectingMoveTarget(false); return; }
 
         const playerId = (state.player as any)?.id;
-        if (army.ownerId !== playerId) return;
+        if (army.ownerId !== playerId) { state.setIsSelectingMoveTarget(false); return; }
 
         const start: HexCoord = { q: army.hexQ, r: army.hexR };
         const goal: HexCoord = { q: targetHex.q, r: targetHex.r };
 
-        if (start.q === goal.q && start.r === goal.r) return;
+        if (start.q === goal.q && start.r === goal.r) {
+          state.setIsSelectingMoveTarget(false);
+          return;
+        }
 
         // Build hex data map for pathfinding
         const hexData = new Map<string, { terrain: TerrainType; passable: boolean }>();
@@ -156,7 +172,7 @@ export function MapCanvas() {
           const key = hexKey({ q: hx.q, r: hx.r });
           hexData.set(key, {
             terrain: hx.terrain as TerrainType,
-            passable: hx.terrain !== 'coast', // coast = water, impassable for land armies
+            passable: hx.terrain !== 'coast',
           });
           if (hx.riverEdges?.length > 0) {
             riverEdges.set(key, hx.riverEdges as HexDirection[]);
@@ -165,9 +181,11 @@ export function MapCanvas() {
 
         const result = findPath(start, goal, hexData, riverEdges);
         if (result) {
-          // Store path excluding the starting hex (movement order is the remaining path)
           state.addMovement(armyId, result.path.slice(1));
         }
+
+        state.setIsSelectingMoveTarget(false);
+        state.setSelectedHex(targetHex);
       }
 
       app.canvas.addEventListener('wheel', (e: WheelEvent) => {
@@ -205,14 +223,12 @@ export function MapCanvas() {
 
     const corners = hexCorners();
 
-    // Layered containers so borders/rivers always render on top of fills
     const terrainLayer = new Container();
     const borderLayer = new Container();
     const riverLayer = new Container();
     const iconLayer = new Container();
     world.addChild(terrainLayer, borderLayer, riverLayer, iconLayer);
 
-    // Build lookup maps
     const settlementByHex = new Map<string, any>();
     for (const s of settlements) {
       const key = `${(s as any).hexQ},${(s as any).hexR}`;
@@ -241,7 +257,7 @@ export function MapCanvas() {
       const fillColor = colorMap[h.terrain] ?? 0xCCCCCC;
       const offsetCorners = corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y }));
 
-      // ── Layer 1: Terrain fill ──
+      // Layer 1: Terrain fill
       const tg = new Graphics();
       tg.poly(offsetCorners);
       tg.fill({ color: fillColor, alpha: fogState === 'soft_fog' ? 0.5 : 1.0 });
@@ -253,7 +269,7 @@ export function MapCanvas() {
       }
       terrainLayer.addChild(tg);
 
-      // ── Layer 2: Owner borders ──
+      // Layer 2: Owner borders
       if (h.ownerId) {
         const bg = new Graphics();
         const ownerColor = playerColors.get(h.ownerId);
@@ -263,7 +279,7 @@ export function MapCanvas() {
         borderLayer.addChild(bg);
       }
 
-      // Selection highlight (on border layer)
+      // Selection highlight
       if (isSelected) {
         const sg = new Graphics();
         sg.poly(offsetCorners);
@@ -271,7 +287,7 @@ export function MapCanvas() {
         borderLayer.addChild(sg);
       }
 
-      // ── Layer 3: River edges ──
+      // Layer 3: River edges
       if (h.riverEdges?.length > 0) {
         const rg = new Graphics();
         const dirIndex: Record<string, number> = { ne: 0, e: 1, se: 2, sw: 3, w: 4, nw: 5 };
@@ -287,7 +303,7 @@ export function MapCanvas() {
         riverLayer.addChild(rg);
       }
 
-      // ── Layer 4: Settlement + army icons ──
+      // Layer 4: Settlement + army icons
       const hexK = `${h.q},${h.r}`;
       const settlement = settlementByHex.get(hexK);
       if (settlement) {
@@ -319,7 +335,7 @@ export function MapCanvas() {
       }
     }
 
-    // ── Movement paths ──
+    // Movement paths
     for (const movement of pendingOrders.movements) {
       const army = armies.find((a: any) => a.id === movement.armyId) as any;
       if (!army) continue;
@@ -328,7 +344,6 @@ export function MapCanvas() {
       const ownerColor = playerColors.get(army.ownerId);
       const pathColor = ownerColor ? parseInt(ownerColor.replace('#', ''), 16) : 0xFFFFFF;
 
-      // Draw line from army position through path
       const startPos = hexToPixel(army.hexQ, army.hexR);
       pg.moveTo(startPos.x, startPos.y);
 
@@ -338,7 +353,6 @@ export function MapCanvas() {
       }
       pg.stroke({ color: pathColor, width: 3, alpha: 0.8 });
 
-      // Draw destination marker
       if (movement.path.length > 0) {
         const dest = movement.path[movement.path.length - 1];
         const destPos = hexToPixel(dest.q, dest.r);
@@ -350,7 +364,7 @@ export function MapCanvas() {
       iconLayer.addChild(pg);
     }
 
-    // ── Selected army highlight ──
+    // Selected army highlight
     if (selectedArmyId) {
       const selArmy = armies.find((a: any) => a.id === selectedArmyId) as any;
       if (selArmy) {
@@ -362,12 +376,25 @@ export function MapCanvas() {
       }
     }
 
+    // Move-target selection cursor (pulsing crosshair indicator on selected hex if in move-select mode)
+    if (isSelectingMoveTarget && selectedArmyId) {
+      // Highlight the army being moved more prominently
+      const selArmy = armies.find((a: any) => a.id === selectedArmyId) as any;
+      if (selArmy) {
+        const mg = new Graphics();
+        const pos = hexToPixel(selArmy.hexQ, selArmy.hexR);
+        mg.circle(pos.x, pos.y + 8, 12);
+        mg.stroke({ color: 0xFF4444, width: 2, alpha: 0.6 });
+        iconLayer.addChild(mg);
+      }
+    }
+
     if (hexes.length === 0) {
       renderDemoMap(terrainLayer, corners);
     }
-  }, [hexes, settlements, armies, players, selectedHex, selectedArmyId, pendingOrders]);
+  }, [hexes, settlements, armies, players, selectedHex, selectedArmyId, pendingOrders, isSelectingMoveTarget]);
 
-  return <div ref={canvasRef} style={{ width: '100%', height: '100%' }} />;
+  return <div ref={canvasRef} style={{ width: '100%', height: '100%', cursor: isSelectingMoveTarget ? 'crosshair' : 'default' }} />;
 }
 
 /** Render a demo hex grid for testing before a real map is loaded. */

@@ -366,3 +366,84 @@ gameRouter.post('/:slug/player/flag', async (req, res) => {
 
   res.json({ success: true });
 });
+
+/** PATCH /api/games/:slug/army/:armyId — Rename army / update subtitle. */
+gameRouter.patch('/:slug/army/:armyId', async (req, res) => {
+  const sessionToken = req.headers['x-session-token'] as string;
+  if (!sessionToken) { res.status(401).json({ error: 'Session token required' }); return; }
+
+  const [player] = await db.select().from(schema.players).where(eq(schema.players.sessionToken, sessionToken));
+  if (!player) { res.status(403).json({ error: 'Invalid session' }); return; }
+
+  const { armyId } = req.params;
+  const [army] = await db.select().from(schema.armies).where(eq(schema.armies.id, armyId));
+  if (!army || army.ownerId !== player.id) { res.status(404).json({ error: 'Army not found' }); return; }
+
+  const { name, subtitle } = req.body as { name?: string; subtitle?: string };
+  const updates: Record<string, unknown> = {};
+  if (name !== undefined) updates.name = name;
+  if (subtitle !== undefined) updates.subtitle = subtitle;
+
+  if (Object.keys(updates).length > 0) {
+    await db.update(schema.armies).set(updates).where(eq(schema.armies.id, armyId));
+  }
+
+  res.json({ success: true });
+});
+
+/** PATCH /api/games/:slug/unit/:unitId — Rename unit / update subtitle. */
+gameRouter.patch('/:slug/unit/:unitId', async (req, res) => {
+  const sessionToken = req.headers['x-session-token'] as string;
+  if (!sessionToken) { res.status(401).json({ error: 'Session token required' }); return; }
+
+  const [player] = await db.select().from(schema.players).where(eq(schema.players.sessionToken, sessionToken));
+  if (!player) { res.status(403).json({ error: 'Invalid session' }); return; }
+
+  const { unitId } = req.params;
+  const [unit] = await db.select().from(schema.units).where(eq(schema.units.id, unitId));
+  if (!unit) { res.status(404).json({ error: 'Unit not found' }); return; }
+
+  // Verify ownership through army
+  const [army] = await db.select().from(schema.armies).where(eq(schema.armies.id, unit.armyId));
+  if (!army || army.ownerId !== player.id) { res.status(403).json({ error: 'Not your unit' }); return; }
+
+  const { name, subtitle } = req.body as { name?: string; subtitle?: string };
+  const updates: Record<string, unknown> = {};
+  if (name !== undefined) updates.name = name;
+  if (subtitle !== undefined) updates.subtitle = subtitle;
+
+  if (Object.keys(updates).length > 0) {
+    await db.update(schema.units).set(updates).where(eq(schema.units.id, unitId));
+  }
+
+  res.json({ success: true });
+});
+
+/** PATCH /api/games/:slug/hex — Rename a hex (custom name). */
+gameRouter.patch('/:slug/hex', async (req, res) => {
+  const { slug } = req.params;
+  const sessionToken = req.headers['x-session-token'] as string;
+  if (!sessionToken) { res.status(401).json({ error: 'Session token required' }); return; }
+
+  const [game] = await db.select().from(schema.games).where(eq(schema.games.slug, slug));
+  if (!game) { res.status(404).json({ error: 'Game not found' }); return; }
+
+  const [player] = await db.select().from(schema.players).where(eq(schema.players.sessionToken, sessionToken));
+  if (!player || player.gameId !== game.id) { res.status(403).json({ error: 'Not in this game' }); return; }
+
+  const { q, r, customName } = req.body as { q: number; r: number; customName: string };
+  if (q === undefined || r === undefined) { res.status(400).json({ error: 'q and r required' }); return; }
+
+  const [hex] = await db.select().from(schema.gameHexes).where(
+    and(eq(schema.gameHexes.gameId, game.id), eq(schema.gameHexes.q, q), eq(schema.gameHexes.r, r))
+  );
+  if (!hex) { res.status(404).json({ error: 'Hex not found' }); return; }
+
+  // Only owner can name a hex
+  if (hex.ownerId !== player.id) { res.status(403).json({ error: 'You do not control this hex' }); return; }
+
+  await db.update(schema.gameHexes).set({ customName: customName || null })
+    .where(eq(schema.gameHexes.id, hex.id));
+
+  res.json({ success: true });
+});

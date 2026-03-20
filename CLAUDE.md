@@ -1,5 +1,9 @@
 # Sovereigns — Development Guide
 
+### New Tips
+
+- A diegetic and cozy interface is what we're going for here.
+
 ## Project Overview
 
 Browser-based multiplayer turn-based strategy game for 4-8 friends, inspired by EU4/Victoria 2/Civ.

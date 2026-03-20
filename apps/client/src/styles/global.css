@@ -1,3 +1,13 @@
+/* ─── Fonts ─── */
+
+@font-face {
+  font-family: 'Kingthings Exeter';
+  src: url('../../fonts/Kingthings Exeter.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ─── Dark Study Theme ─── */
 
 :root {
@@ -26,6 +36,7 @@
   --paper-dark: #a88850;
   --ink-color: #2c1810;
 
+  --font-display: 'Kingthings Exeter', 'IM Fell English', serif;
   --font-heading: 'IM Fell English', serif;
   --font-body: 'Crimson Text', serif;
 
@@ -77,7 +88,12 @@ body {
   color: var(--text-primary);
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1, h2 {
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+
+h3, h4, h5, h6 {
   font-family: var(--font-heading);
   font-weight: 400;
 }
@@ -107,7 +123,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: 10px 20px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  font-family: var(--font-body);
+  font-family: var(--font-display);
   font-size: 16px;
   cursor: pointer;
   transition: all 0.15s;
@@ -291,7 +307,7 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: center;
   border: none;
   background: transparent;
-  font-family: var(--font-heading);
+  font-family: var(--font-display);
   font-size: 14px;
   color: var(--text-muted);
   cursor: pointer;
@@ -859,7 +875,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .game-over-title {
-  font-family: var(--font-heading);
+  font-family: var(--font-display);
   font-size: 48px;
   background: linear-gradient(180deg, #e8c860 0%, #b8860b 100%);
   -webkit-background-clip: text;
@@ -1028,7 +1044,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .writing-desk-title {
-  font-family: var(--font-heading);
+  font-family: var(--font-display);
   font-size: 20px;
   color: var(--accent-gold);
   margin-bottom: 12px;
@@ -1397,7 +1413,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .army-card-name {
-  font-family: var(--font-heading);
+  font-family: var(--font-display);
   font-size: 16px;
   color: var(--text-primary);
   cursor: text;
@@ -1706,7 +1722,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .map-context-header {
-  font-family: var(--font-heading);
+  font-family: var(--font-display);
   font-size: 14px;
   color: var(--accent-gold);
   padding: 10px 14px 8px;
@@ -1781,7 +1797,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .move-target-banner-text {
-  font-family: var(--font-heading);
+  font-family: var(--font-display);
 }
 
 .move-target-cancel {

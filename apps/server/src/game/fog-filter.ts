@@ -156,6 +156,7 @@ export async function buildFilteredState(
         riverEdges: hex.riverEdges,
         ownerId: hex.ownerId,
         settlementId: hex.settlementId,
+        customName: hex.customName,
         fogState: 'soft_fog',
       });
     } else {

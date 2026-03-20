@@ -6,6 +6,8 @@ import { BottomBar } from './BottomBar.js';
 import { TabOverlay } from './TabOverlay.js';
 import { TurnBar } from './TurnBar.js';
 import { MapCanvas } from '../map/MapCanvas.js';
+import { MapContextMenu } from '../map/MapContextMenu.js';
+import { MoveTargetBanner } from '../map/MoveTargetBanner.js';
 import { HexDetailPanel } from '../panels/HexDetailPanel.js';
 import { CombatLogPanel } from '../panels/CombatLogPanel.js';
 import { NotificationBell } from '../panels/NotificationBell.js';
@@ -125,8 +127,10 @@ export function GamePage() {
     <div className="game-layout">
       <div className="game-map-area">
         <MapCanvas />
+        <MoveTargetBanner />
         <TurnBar />
         <NotificationBell />
+        <MapContextMenu />
         <TabOverlay />
         {!activeTab && <HexDetailPanel />}
         <CombatLogPanel />

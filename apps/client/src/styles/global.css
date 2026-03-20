@@ -1214,3 +1214,476 @@ h1, h2, h3, h4, h5, h6 {
 .letter-recall-btn:hover {
   background: rgba(44, 95, 138, 0.08);
 }
+
+/* ─── Army Cards (Military Tab) ─── */
+
+.army-card {
+  background: var(--bg-parchment-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-top: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.army-card:hover {
+  border-color: var(--border-dark);
+}
+
+.army-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.army-card-header:hover {
+  background: rgba(139, 109, 71, 0.06);
+}
+
+.army-card-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.army-expand-icon {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.army-card-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.army-card-name {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  color: var(--text-primary);
+  cursor: text;
+}
+
+.army-card-name:hover {
+  text-decoration-style: dotted;
+  text-decoration-line: underline;
+  text-decoration-color: var(--text-muted);
+}
+
+.army-card-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.army-card-subtitle-empty {
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.army-card-header:hover .army-card-subtitle-empty {
+  opacity: 0.6;
+}
+
+.army-name-input,
+.army-subtitle-input {
+  font-family: var(--font-heading);
+  font-size: 15px;
+  color: var(--text-primary);
+  background: var(--bg-parchment-light);
+  border: 1px solid var(--border-dark);
+  border-radius: 3px;
+  padding: 2px 6px;
+  width: 100%;
+}
+
+.army-subtitle-input {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.army-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.army-card-count {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.army-card-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.army-badge-moving {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.army-badge-warning {
+  background: var(--accent-gold);
+  color: white;
+}
+
+.army-card-coord {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ─── Army Unit Roster ─── */
+
+.army-unit-roster {
+  border-top: 1px solid var(--border-color);
+  padding: 8px 14px 12px;
+  background: rgba(245, 230, 200, 0.4);
+}
+
+.army-empty-roster {
+  font-style: italic;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.army-supply-bar {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-color);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ─── Unit Row ─── */
+
+.unit-row {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-top: 6px;
+  background: var(--bg-parchment-light);
+  overflow: hidden;
+}
+
+.unit-row-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.unit-row-header:hover {
+  background: rgba(139, 109, 71, 0.06);
+}
+
+.unit-expand-icon {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.unit-row-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.unit-row-name {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+
+.unit-row-name:hover {
+  text-decoration-style: dotted;
+  text-decoration-line: underline;
+  text-decoration-color: var(--text-muted);
+}
+
+.unit-row-type {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.unit-name-input {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: white;
+  border: 1px solid var(--border-dark);
+  border-radius: 3px;
+  padding: 1px 4px;
+  width: 120px;
+}
+
+.unit-row-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.unit-strength-bar {
+  width: 40px;
+  height: 6px;
+  background: var(--border-color);
+  border-radius: 3px;
+  overflow: hidden;
+  display: block;
+}
+
+.unit-strength-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.unit-vet-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* ─── Unit Detail Panel (expanded) ─── */
+
+.unit-detail-panel {
+  padding: 10px 12px 14px;
+  border-top: 1px solid var(--border-color);
+  background: rgba(250, 243, 227, 0.6);
+}
+
+.unit-subtitle-row {
+  margin-bottom: 10px;
+}
+
+.unit-subtitle-input {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-style: italic;
+  color: var(--text-secondary);
+  background: white;
+  border: 1px solid var(--border-dark);
+  border-radius: 3px;
+  padding: 3px 6px;
+}
+
+.unit-subtitle-text {
+  font-size: 13px;
+  font-style: italic;
+  color: var(--text-secondary);
+  cursor: text;
+}
+
+.unit-subtitle-text:hover {
+  text-decoration-style: dotted;
+  text-decoration-line: underline;
+  text-decoration-color: var(--text-muted);
+}
+
+.unit-subtitle-empty {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.unit-description {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  font-style: italic;
+  padding: 8px 10px;
+  background: rgba(139, 109, 71, 0.04);
+  border-left: 2px solid var(--border-color);
+  border-radius: 0 3px 3px 0;
+}
+
+.unit-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.unit-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--bg-parchment-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+
+.unit-stat-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.unit-stat-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.unit-status-line {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ─── Map Context Menu ─── */
+
+.map-context-menu {
+  position: fixed;
+  z-index: 200;
+  background: var(--bg-parchment-light);
+  border: 2px solid var(--border-dark);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  min-width: 200px;
+  overflow: hidden;
+}
+
+.map-context-header {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  color: var(--text-primary);
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+}
+
+.map-context-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 14px 2px;
+}
+
+.map-context-item {
+  padding: 8px 14px;
+  font-size: 14px;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.map-context-item:hover {
+  background: var(--bg-parchment-dark);
+}
+
+.map-context-item-active {
+  background: rgba(184, 134, 11, 0.1);
+  font-weight: 600;
+}
+
+.map-context-item-detail {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.map-context-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 2px 0;
+}
+
+/* ─── Move Target Banner ─── */
+
+.move-target-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(44, 24, 16, 0.9);
+  color: var(--bg-parchment-light);
+  padding: 10px 20px;
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.move-target-banner-text {
+  font-family: var(--font-heading);
+}
+
+.move-target-cancel {
+  padding: 4px 10px !important;
+  font-size: 12px !important;
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--bg-parchment-light);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.move-target-cancel:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ─── Hex Name Editor ─── */
+
+.hex-name-input {
+  width: 100%;
+  font-family: var(--font-heading);
+  font-size: 15px;
+  color: var(--text-primary);
+  background: var(--bg-parchment-light);
+  border: 1px solid var(--border-dark);
+  border-radius: 4px;
+  padding: 6px 10px;
+}
+
+.hex-name-input:focus {
+  outline: none;
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 2px rgba(184, 134, 11, 0.2);
+}
+
+.hex-name-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+}

@@ -24,6 +24,9 @@ export interface GameState {
   tradeAgreements: Record<string, unknown>[];
   notifications: GameNotification[];
   eventLog: Record<string, unknown>[];
+  unitTemplates: Record<string, unknown>[];
+  weaponDesigns: Record<string, unknown>[];
+  equipmentOrders: Record<string, unknown>[];
 }
 
 export interface GameSlice extends GameState {
@@ -49,6 +52,9 @@ const initialState: GameState = {
   tradeAgreements: [],
   notifications: [],
   eventLog: [],
+  unitTemplates: [],
+  weaponDesigns: [],
+  equipmentOrders: [],
 };
 
 export const createGameSlice: StateCreator<GameSlice> = (set) => ({

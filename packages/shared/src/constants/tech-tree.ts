@@ -11,8 +11,8 @@ export interface TechDef {
 /** Number of techs required to unlock the next era. */
 export const ERA_THRESHOLDS: Record<TechEra, { required: number; total: number }> = {
   early:  { required: 3, total: 6 },
-  middle: { required: 3, total: 7 },
-  late:   { required: 0, total: 10 }, // no next era in V1
+  middle: { required: 3, total: 9 },
+  late:   { required: 0, total: 12 }, // no next era in V1
 };
 
 export const TECH_TREE: Record<TechId, TechDef> = {
@@ -71,8 +71,16 @@ export const TECH_TREE: Record<TechId, TechDef> = {
     era: 'middle', name: 'Deep Mining', prerequisites: ['masonry'], researchCost: 40,
     unlocks: 'Convert a Hill hex to Stone or Iron production',
   },
+  gryphon_taming: {
+    era: 'middle', name: 'Gryphon Taming', prerequisites: ['military_organisation'], researchCost: 45,
+    unlocks: 'Griffin Lodge → Gryphons; Gryphon mounts available in unit designer',
+  },
+  weapon_design: {
+    era: 'middle', name: 'Weapon Design', prerequisites: ['military_academy'], researchCost: 40,
+    unlocks: 'Create weapon variant designs (gold cost + development phase per design)',
+  },
 
-  // ── Late Era (10) ──
+  // ── Late Era (12) ──
   firearms: {
     era: 'late', name: 'Firearms', prerequisites: ['foundry', 'alchemy'], researchCost: 60,
     unlocks: 'Gunsmith → Rifles',
@@ -112,6 +120,14 @@ export const TECH_TREE: Record<TechId, TechDef> = {
   medicine: {
     era: 'late', name: 'Medicine', prerequisites: ['agriculture'], researchCost: 50,
     unlocks: 'Increases pop growth rate',
+  },
+  demigryph_breeding: {
+    era: 'late', name: 'Demigryph Breeding', prerequisites: ['gryphon_taming'], researchCost: 60,
+    unlocks: 'Breed Demigryphs from Horses + Gryphons; Demigryph mounts in unit designer',
+  },
+  advanced_weapon_design: {
+    era: 'late', name: 'Advanced Weapon Design', prerequisites: ['weapon_design', 'firearms'], researchCost: 55,
+    unlocks: 'Expanded weapon variant budget; design firearms variants',
   },
 };
 

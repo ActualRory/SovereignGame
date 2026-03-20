@@ -67,9 +67,9 @@ export function CombatLogPanel() {
                   <strong>Attacker losses:</strong>
                   {(log.attackerLosses ?? []).map((loss: any) => (
                     <div key={loss.unitId} style={{ marginLeft: 8, color: loss.destroyed ? 'var(--accent-red, #a44)' : 'var(--text-muted)' }}>
-                      {formatName(loss.unitType)}: {loss.startStrength}% → {Math.round(loss.endStrength)}%
+                      {loss.unitName ?? 'Unit'}: {loss.startTroops} → {loss.endTroops} troops
                       {loss.destroyed && ' (destroyed)'}
-                      {loss.veterancyGained > 0 && ` +${loss.veterancyGained} vet`}
+                      {loss.xpGained > 0 && ` +${loss.xpGained} xp`}
                     </div>
                   ))}
                 </div>
@@ -77,9 +77,9 @@ export function CombatLogPanel() {
                   <strong>Defender losses:</strong>
                   {(log.defenderLosses ?? []).map((loss: any) => (
                     <div key={loss.unitId} style={{ marginLeft: 8, color: loss.destroyed ? 'var(--accent-red, #a44)' : 'var(--text-muted)' }}>
-                      {formatName(loss.unitType)}: {loss.startStrength}% → {Math.round(loss.endStrength)}%
+                      {loss.unitName ?? 'Unit'}: {loss.startTroops} → {loss.endTroops} troops
                       {loss.destroyed && ' (destroyed)'}
-                      {loss.veterancyGained > 0 && ` +${loss.veterancyGained} vet`}
+                      {loss.xpGained > 0 && ` +${loss.xpGained} xp`}
                     </div>
                   ))}
                 </div>
@@ -97,7 +97,7 @@ export function CombatLogPanel() {
                           <em>Fire:</em>{' '}
                           {round.firePhase.map((r: any) => (
                             <span key={r.unitId} className="resource-tag" style={{ fontSize: 10, margin: 1 }}>
-                              {formatName(r.unitType)} {r.dice?.length}d20→{r.successes} hits ({r.netHits} net)
+                              {r.unitName ?? 'Unit'} {r.dice?.length}d20→{r.successes} hits ({r.netHits} net)
                             </span>
                           ))}
                         </div>
@@ -107,7 +107,7 @@ export function CombatLogPanel() {
                           <em>Shock:</em>{' '}
                           {round.shockPhase.map((r: any) => (
                             <span key={r.unitId} className="resource-tag" style={{ fontSize: 10, margin: 1 }}>
-                              {formatName(r.unitType)} {r.dice?.length}d20→{r.successes} hits ({r.netHits} net)
+                              {r.unitName ?? 'Unit'} {r.dice?.length}d20→{r.successes} hits ({r.netHits} net)
                             </span>
                           ))}
                         </div>
@@ -115,7 +115,7 @@ export function CombatLogPanel() {
                       {round.casualties?.length > 0 && (
                         <div style={{ color: 'var(--accent-red, #a44)' }}>
                           Casualties: {round.casualties.map((c: any) =>
-                            `${c.side} unit -${c.damageDealt}% → ${c.newState}`
+                            `${c.side} unit -${c.troopsLost} troops → ${c.newState}`
                           ).join(', ')}
                         </div>
                       )}

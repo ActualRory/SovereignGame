@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { HexCoord } from '@kingdoms/shared';
+import type { HexCoord, PrimaryWeapon, SidearmWeapon, ArmourType, MountType } from '@kingdoms/shared';
 
 export interface TradeProposalOrder {
   recipientId: string;
@@ -8,18 +8,80 @@ export interface TradeProposalOrder {
   isStanding: boolean;
 }
 
+export interface CreateTemplateOrder {
+  name: string;
+  isIrregular: boolean;
+  isMounted: boolean;
+  companiesOrSquadrons: 1 | 2 | 3 | 4 | 5;
+  primary: PrimaryWeapon | null;
+  sidearm: SidearmWeapon | null;
+  armour: ArmourType | null;
+  mount: MountType | null;
+}
+
+export interface UpdateTemplateOrder {
+  templateId: string;
+  changes: Partial<Omit<CreateTemplateOrder, 'name'> & { name: string }>;
+}
+
+export interface RecruitFromTemplateOrder {
+  settlementId: string;
+  armyId: string;
+  templateId: string;
+}
+
+export interface PlaceEquipmentOrderOrder {
+  settlementId: string;
+  equipmentType: string;
+  quantity: number;
+}
+
+export interface CreateWeaponDesignOrder {
+  baseWeapon: PrimaryWeapon | SidearmWeapon;
+  name: string;
+  statModifiers: Partial<{ fire: number; shock: number; defence: number; morale: number; ap: number; armour: number }>;
+  costModifier: number;
+}
+
+export interface DraftOrder {
+  settlementId: string;
+  amount: number;
+}
+
+export interface DraftMountsOrder {
+  settlementId: string;
+  mountType: 'horse' | 'gryphon' | 'demigryph';
+  amount: number;
+}
+
 export interface PendingOrders {
   taxRate: string;
   constructions: Array<{ settlementId: string; buildingType: string }>;
   settlementUpgrades: Array<{ settlementId: string }>;
   techResearch: string | null;
-  recruitments: Array<{ settlementId: string; armyId: string; unitType: string }>;
+  recruitments: RecruitFromTemplateOrder[];
   movements: Array<{ armyId: string; path: HexCoord[] }>;
   hireGenerals: Array<{ settlementId: string; name: string; isAdmiral: boolean }>;
   createArmies: Array<{ hexQ: number; hexR: number; name: string }>;
   newSettlements: Array<{ hexQ: number; hexR: number; name: string }>;
   tradeProposals: TradeProposalOrder[];
   tradeCancellations: string[];
+  createTemplates: CreateTemplateOrder[];
+  updateTemplates: UpdateTemplateOrder[];
+  deleteTemplates: string[];
+  createWeaponDesigns: CreateWeaponDesignOrder[];
+  retireWeaponDesigns: string[];
+  draftRecruits: DraftOrder[];
+  dismissRecruits: DraftOrder[];
+  draftMounts: DraftMountsOrder[];
+  dismissMounts: DraftMountsOrder[];
+  placeEquipmentOrders: PlaceEquipmentOrderOrder[];
+  cancelEquipmentOrders: string[];
+  disbandUnits: Array<{ unitId: string; armyId: string }>;
+  upgradeUnits: Array<{ unitId: string; armyId: string; settlementId: string }>;
+  replenishments: Array<{ unitId: string; armyId: string; settlementId: string }>;
+  assignOfficers: Array<{ generalId: string; unitId: string }>;
+  unassignOfficers: string[];
 }
 
 export interface OrdersSlice {
@@ -27,7 +89,7 @@ export interface OrdersSlice {
   setPendingOrders: (orders: Partial<PendingOrders>) => void;
   addMovement: (armyId: string, path: HexCoord[]) => void;
   removeMovement: (armyId: string) => void;
-  addRecruitment: (settlementId: string, armyId: string, unitType: string) => void;
+  addRecruitment: (order: RecruitFromTemplateOrder) => void;
   removeRecruitment: (index: number) => void;
   resetOrders: (taxRate?: string) => void;
 }
@@ -44,6 +106,22 @@ const defaultOrders = (taxRate = 'low'): PendingOrders => ({
   newSettlements: [],
   tradeProposals: [],
   tradeCancellations: [],
+  createTemplates: [],
+  updateTemplates: [],
+  deleteTemplates: [],
+  createWeaponDesigns: [],
+  retireWeaponDesigns: [],
+  draftRecruits: [],
+  dismissRecruits: [],
+  draftMounts: [],
+  dismissMounts: [],
+  placeEquipmentOrders: [],
+  cancelEquipmentOrders: [],
+  disbandUnits: [],
+  upgradeUnits: [],
+  replenishments: [],
+  assignOfficers: [],
+  unassignOfficers: [],
 });
 
 export const createOrdersSlice: StateCreator<OrdersSlice> = (set) => ({
@@ -70,10 +148,10 @@ export const createOrdersSlice: StateCreator<OrdersSlice> = (set) => ({
     },
   })),
 
-  addRecruitment: (settlementId, armyId, unitType) => set((s) => ({
+  addRecruitment: (order) => set((s) => ({
     pendingOrders: {
       ...s.pendingOrders,
-      recruitments: [...s.pendingOrders.recruitments, { settlementId, armyId, unitType }],
+      recruitments: [...s.pendingOrders.recruitments, order],
     },
   })),
 

@@ -1,14 +1,15 @@
 // ─── Combat ───
 
-import type { UnitType, ShipType, Veterancy, UnitPosition } from './military.js';
+import type { ShipType, UnitPosition, UnitState } from './military.js';
 
 export interface DiceRoll {
   unitId: string;
-  unitType: UnitType | ShipType;
+  /** Template name for display purposes. */
+  unitName: string | null;
   phase: 'fire' | 'shock';
   dice: number[];          // raw d20 values
   bonus: number;           // general command + terrain + vet
-  threshold: number;       // hits-on value
+  threshold: number;       // hits-on value (after weighted vet modifier)
   successes: number;       // dice that met threshold after bonus
   armourReduction: number; // target armour minus AP
   netHits: number;         // successes - armour reduction (min 0)
@@ -25,9 +26,9 @@ export interface CombatRound {
 export interface CombatCasualty {
   unitId: string;
   side: 'attacker' | 'defender';
-  damageDealt: number;
-  newStrengthPct: number;
-  newState: string;
+  troopsLost: number;
+  newTroopCounts: { rookie: number; capable: number; veteran: number };
+  newState: UnitState;
 }
 
 export interface MoraleCheck {
@@ -53,9 +54,32 @@ export interface CombatResult {
 
 export interface UnitLossSummary {
   unitId: string;
-  unitType: UnitType | ShipType;
-  startStrength: number;
-  endStrength: number;
+  templateId: string;
+  unitName: string | null;
+  startTroops: number;
+  endTroops: number;
+  endTroopCounts: { rookie: number; capable: number; veteran: number };
   destroyed: boolean;
-  veterancyGained: number;
+  xpGained: number;
+  /** Troop tier promotions after combat. */
+  rookiesPromoted: number;
+  capablePromoted: number;
+}
+
+// ── Naval (unchanged) ──
+
+export interface NavalCasualty {
+  shipId: string;
+  side: 'attacker' | 'defender';
+  hullDamage: number;
+  newHullPct: number;
+  newState: string;
+}
+
+export interface NavalLossSummary {
+  shipId: string;
+  shipType: ShipType;
+  startHull: number;
+  endHull: number;
+  sunk: boolean;
 }

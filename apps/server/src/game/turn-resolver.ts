@@ -11,7 +11,7 @@ import {
   calculateSettlementProduction, calculateTaxIncome,
   calculateUpkeep, calculateFoodConsumption, getStorageCap,
   calculatePopGrowth, calculateStarvation,
-  BUILDINGS, COST_TIERS, TECH_TREE, SETTLEMENT_TIERS, UNITS, TERRAIN,
+  BUILDINGS, COST_TIERS, TECH_TREE, SETTLEMENT_TIERS, TERRAIN,
   STABILITY_PER_TURN, RIVER_CROSSING_COST,
   getNextTier, TIER_ORDER,
   hexNeighbors, hexKey, hexDistance, hasRiverBetween,
@@ -19,11 +19,17 @@ import {
   resolveCombat, resolveSiegeAssault,
   calculateStabilityTurn, resolveWinterRoll, WINTER_ROLL_BONUS,
   getStabilityBand,
+  getBaseStats, getDefaultPosition, MEN_PER_COMPANY, MEN_PER_SQUADRON,
+  WEAPON_DESIGN_COST, WEAPON_DESIGN_DEVELOP_TURNS,
+  PRIMARY_WEAPONS, SIDEARM_WEAPONS, ARMOUR_TYPES,
+  computeUnitStats,
   type CombatInput, type ArmySide, type CombatUnitInput, type CombatResult,
   type TurnOrders, emptyOrders,
   type TaxRate, type BuildingType, type ResourceType, type SettlementTier,
-  type TerrainType, type UnitType, type UnitState, type Veterancy, type UnitPosition,
+  type TerrainType, type UnitState, type UnitPosition,
   type HexDirection, type Season, type StabilityEventType,
+  type PrimaryWeapon, type SidearmWeapon, type ArmourType, type MountType,
+  type UnitTemplate, type WeaponDesign, type TroopCounts,
 } from '@kingdoms/shared';
 
 export interface TurnResult {
@@ -496,74 +502,629 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   }
 
   // ══════════════════════════════════════════════
-  // STEP 6b: Recruitment
+  // STEP 6a-pre: Unit Template + Weapon Design Management
   // ══════════════════════════════════════════════
   for (const player of activePlayers) {
     const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
 
-    for (const recruit of orders.recruitments) {
+    // ── Create unit templates ──
+    for (const tmplOrder of (orders.createTemplates ?? [])) {
+      await db.insert(schema.unitTemplates).values({
+        gameId,
+        playerId: player.id,
+        name: tmplOrder.name,
+        isIrregular: tmplOrder.isIrregular,
+        isMounted: tmplOrder.isMounted,
+        companiesOrSquadrons: tmplOrder.companiesOrSquadrons,
+        primary: tmplOrder.primary ?? null,
+        sidearm: tmplOrder.sidearm ?? null,
+        armour: tmplOrder.armour ?? null,
+        mount: tmplOrder.mount ?? null,
+        weaponDesignId: tmplOrder.weaponDesignId ?? null,
+      });
+    }
+
+    // ── Update unit templates (and flag existing units as outdated) ──
+    for (const tmplOrder of (orders.updateTemplates ?? [])) {
+      const [tmpl] = await db.select().from(schema.unitTemplates)
+        .where(and(
+          eq(schema.unitTemplates.id, tmplOrder.templateId),
+          eq(schema.unitTemplates.playerId, player.id),
+        ));
+      if (!tmpl) continue;
+
+      await db.update(schema.unitTemplates)
+        .set({ ...tmplOrder.changes, updatedAt: new Date().toISOString() })
+        .where(eq(schema.unitTemplates.id, tmpl.id));
+
+      // Mark all live units using this template as outdated
+      const armies = await db.select().from(schema.armies)
+        .where(and(eq(schema.armies.gameId, gameId), eq(schema.armies.ownerId, player.id)));
+      for (const army of armies) {
+        await db.update(schema.units)
+          .set({ isOutdated: true })
+          .where(and(
+            eq(schema.units.armyId, army.id),
+            eq(schema.units.templateId, tmpl.id),
+          ));
+      }
+    }
+
+    // ── Delete unit templates ──
+    for (const tmplOrder of (orders.deleteTemplates ?? [])) {
+      await db.delete(schema.unitTemplates)
+        .where(and(
+          eq(schema.unitTemplates.id, tmplOrder.templateId),
+          eq(schema.unitTemplates.playerId, player.id),
+        ));
+    }
+
+    // ── Create weapon designs (costs gold, enters developing phase) ──
+    for (const designOrder of (orders.createWeaponDesigns ?? [])) {
+      const playerRow = updatedPlayers.find(p => p.id === player.id);
+      if (!playerRow || playerRow.gold < WEAPON_DESIGN_COST) continue;
+
+      await db.update(schema.players)
+        .set({ gold: playerRow.gold - WEAPON_DESIGN_COST })
+        .where(eq(schema.players.id, player.id));
+
+      await db.insert(schema.weaponDesigns).values({
+        gameId,
+        playerId: player.id,
+        baseWeapon: designOrder.baseWeapon,
+        name: designOrder.name,
+        statModifiers: designOrder.statModifiers as Record<string, number>,
+        costModifier: Math.round((designOrder.costModifier ?? 0) * 100), // store as int ×100
+        status: 'developing',
+        turnsRemaining: WEAPON_DESIGN_DEVELOP_TURNS,
+      });
+
+      events.push({
+        type: 'weapon_design_started',
+        description: `${player.countryName} is developing ${designOrder.name}`,
+        playerIds: [player.id],
+      });
+    }
+
+    // ── Retire weapon designs ──
+    for (const retireOrder of (orders.retireWeaponDesigns ?? [])) {
+      await db.update(schema.weaponDesigns)
+        .set({ status: 'retired' })
+        .where(and(
+          eq(schema.weaponDesigns.id, retireOrder.designId),
+          eq(schema.weaponDesigns.playerId, player.id),
+        ));
+    }
+  }
+
+  // ── Tick weapon design development ──
+  const allDesigns = await db.select().from(schema.weaponDesigns)
+    .where(eq(schema.weaponDesigns.gameId, gameId));
+  for (const design of allDesigns) {
+    if (design.status !== 'developing') continue;
+    const newTurns = design.turnsRemaining - 1;
+    if (newTurns <= 0) {
+      await db.update(schema.weaponDesigns)
+        .set({ status: 'ready', turnsRemaining: 0 })
+        .where(eq(schema.weaponDesigns.id, design.id));
+      const designPlayer = activePlayers.find(p => p.id === design.playerId);
+      if (designPlayer) {
+        events.push({
+          type: 'weapon_design_ready',
+          description: `${design.name} design is ready`,
+          playerIds: [designPlayer.id],
+        });
+      }
+    } else {
+      await db.update(schema.weaponDesigns)
+        .set({ turnsRemaining: newTurns })
+        .where(eq(schema.weaponDesigns.id, design.id));
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 6a-mid: Draft & Dismiss
+  // ══════════════════════════════════════════════
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
+
+    for (const draftOrder of (orders.draftRecruits ?? [])) {
+      const [settlement] = await db.select().from(schema.settlements)
+        .where(and(
+          eq(schema.settlements.id, draftOrder.settlementId),
+          eq(schema.settlements.ownerId, player.id),
+        ));
+      if (!settlement) continue;
+      const amount = Math.min(draftOrder.amount, Math.floor(settlement.population * 0.20));
+      if (amount <= 0) continue;
+      await db.update(schema.settlements)
+        .set({ draftedRecruits: settlement.draftedRecruits + amount })
+        .where(eq(schema.settlements.id, settlement.id));
+    }
+
+    for (const dismissOrder of (orders.dismissRecruits ?? [])) {
+      const [settlement] = await db.select().from(schema.settlements)
+        .where(and(
+          eq(schema.settlements.id, dismissOrder.settlementId),
+          eq(schema.settlements.ownerId, player.id),
+        ));
+      if (!settlement) continue;
+      const amount = Math.min(dismissOrder.amount, settlement.draftedRecruits);
+      await db.update(schema.settlements)
+        .set({ draftedRecruits: settlement.draftedRecruits - amount })
+        .where(eq(schema.settlements.id, settlement.id));
+    }
+
+    for (const draftOrder of (orders.draftMounts ?? [])) {
+      const [settlement] = await db.select().from(schema.settlements)
+        .where(and(
+          eq(schema.settlements.id, draftOrder.settlementId),
+          eq(schema.settlements.ownerId, player.id),
+        ));
+      if (!settlement) continue;
+      const storage = { ...(settlement.storage as Record<string, number>) };
+      const mountKey = draftOrder.mountType === 'horse' ? 'horses'
+        : draftOrder.mountType === 'gryphon' ? 'griffins' : 'demigryphs';
+      const available = storage[mountKey] ?? 0;
+      const amount = Math.min(draftOrder.amount, available);
+      if (amount <= 0) continue;
+      storage[mountKey] = available - amount;
+
+      const updates: Record<string, number> = { storage: storage as unknown as number };
+      if (draftOrder.mountType === 'horse') {
+        (updates as Record<string, unknown>)['draftedHorses'] = settlement.draftedHorses + amount;
+      } else if (draftOrder.mountType === 'gryphon') {
+        (updates as Record<string, unknown>)['draftedGryphons'] = settlement.draftedGryphons + amount;
+      } else {
+        (updates as Record<string, unknown>)['draftedDemigryphs'] = settlement.draftedDemigryphs + amount;
+      }
+      await db.update(schema.settlements)
+        .set({ storage, ...(draftOrder.mountType === 'horse' ? { draftedHorses: settlement.draftedHorses + amount }
+          : draftOrder.mountType === 'gryphon' ? { draftedGryphons: settlement.draftedGryphons + amount }
+          : { draftedDemigryphs: settlement.draftedDemigryphs + amount }) })
+        .where(eq(schema.settlements.id, settlement.id));
+    }
+
+    // Dismiss mounts: return to storage (settlement where they currently reside)
+    for (const dismissOrder of (orders.dismissMounts ?? [])) {
+      const [settlement] = await db.select().from(schema.settlements)
+        .where(and(
+          eq(schema.settlements.id, dismissOrder.settlementId),
+          eq(schema.settlements.ownerId, player.id),
+        ));
+      if (!settlement) continue;
+      const storage = { ...(settlement.storage as Record<string, number>) };
+      const mountKey = dismissOrder.mountType === 'horse' ? 'horses'
+        : dismissOrder.mountType === 'gryphon' ? 'griffins' : 'demigryphs';
+      const storageCap = getStorageCap(settlement.tier as SettlementTier);
+
+      const poolKey = dismissOrder.mountType === 'horse' ? 'draftedHorses'
+        : dismissOrder.mountType === 'gryphon' ? 'draftedGryphons' : 'draftedDemigryphs';
+      const poolSize = (settlement as Record<string, number>)[poolKey] ?? 0;
+      const amount = Math.min(dismissOrder.amount, poolSize);
+      const currentInStorage = storage[mountKey] ?? 0;
+      const canFit = Math.max(0, storageCap - currentInStorage);
+      const returned = Math.min(amount, canFit);
+      const lost = amount - returned;
+
+      storage[mountKey] = currentInStorage + returned;
+      await db.update(schema.settlements)
+        .set({
+          storage,
+          ...(dismissOrder.mountType === 'horse' ? { draftedHorses: poolSize - amount }
+            : dismissOrder.mountType === 'gryphon' ? { draftedGryphons: poolSize - amount }
+            : { draftedDemigryphs: poolSize - amount }),
+        })
+        .where(eq(schema.settlements.id, settlement.id));
+
+      if (lost > 0) {
+        events.push({
+          type: 'mounts_lost_on_dismiss',
+          description: `${lost} ${dismissOrder.mountType}s could not be resettled and were lost`,
+          playerIds: [player.id],
+        });
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 6b: Recruitment (template-based)
+  // ══════════════════════════════════════════════
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
+
+    for (const recruit of (orders.recruitments ?? [])) {
       const [settlement] = await db.select().from(schema.settlements)
         .where(eq(schema.settlements.id, recruit.settlementId));
       if (!settlement || settlement.ownerId !== player.id) continue;
 
-      // Verify army exists and belongs to player
       const [army] = await db.select().from(schema.armies)
         .where(eq(schema.armies.id, recruit.armyId));
       if (!army || army.ownerId !== player.id) continue;
-
-      // Army must be at the settlement's hex
       if (army.hexQ !== settlement.hexQ || army.hexR !== settlement.hexR) continue;
 
-      const unitType = recruit.unitType as UnitType;
-      const unitDef = UNITS[unitType];
-      if (!unitDef) continue;
+      // Load the template
+      const [template] = await db.select().from(schema.unitTemplates)
+        .where(and(
+          eq(schema.unitTemplates.id, recruit.templateId),
+          eq(schema.unitTemplates.playerId, player.id),
+        ));
+      if (!template) continue;
 
-      // Check equipment in settlement storage
-      const storage = { ...(settlement.storage as Record<string, number>) };
-      let hasEquipment = true;
-      for (const equip of unitDef.equipment) {
-        if ((storage[equip] ?? 0) < 1) { hasEquipment = false; break; }
-      }
-      if (!hasEquipment) continue;
+      // Calculate troop requirement
+      const troops = template.isMounted
+        ? template.companiesOrSquadrons * MEN_PER_SQUADRON
+        : template.companiesOrSquadrons * MEN_PER_COMPANY;
 
-      // Check settlement has barracks (required for recruitment)
+      // Check drafted recruits pool
+      if (settlement.draftedRecruits < troops) continue;
+
+      // Check settlement has barracks
       const buildings = await db.select().from(schema.buildings)
         .where(eq(schema.buildings.settlementId, settlement.id));
       const hasBarracks = buildings.some(b => b.type === 'barracks' && !b.isConstructing);
       if (!hasBarracks) continue;
 
-      // Deduct equipment
-      for (const equip of unitDef.equipment) {
-        storage[equip] = (storage[equip] ?? 0) - 1;
+      const storage = { ...(settlement.storage as Record<string, number>) };
+      const heldEquipment = { primary: 0, sidearm: 0, armour: 0, mounts: 0 };
+
+      if (!template.isIrregular) {
+        // Check and transfer primary weapon
+        if (template.primary) {
+          const weaponKey = template.primary as string;
+          if ((storage[weaponKey] ?? 0) < troops) continue;
+          storage[weaponKey] = (storage[weaponKey] ?? 0) - troops;
+          heldEquipment.primary = troops;
+        }
+        // Check and transfer sidearm
+        if (template.sidearm) {
+          const sidearmKey = template.sidearm as string;
+          if ((storage[sidearmKey] ?? 0) < troops) continue;
+          storage[sidearmKey] = (storage[sidearmKey] ?? 0) - troops;
+          heldEquipment.sidearm = troops;
+        }
+        // Check and transfer armour
+        if (template.armour) {
+          const armourKey = template.armour as string;
+          if ((storage[armourKey] ?? 0) < troops) continue;
+          storage[armourKey] = (storage[armourKey] ?? 0) - troops;
+          heldEquipment.armour = troops;
+        }
+        // Check and transfer mounts from draft pool
+        if (template.isMounted && template.mount) {
+          const mountPoolKey = template.mount === 'horse' ? 'draftedHorses'
+            : template.mount === 'gryphon' ? 'draftedGryphons' : 'draftedDemigryphs';
+          const mountPool = (settlement as Record<string, number>)[mountPoolKey] ?? 0;
+          if (mountPool < troops) continue;
+          heldEquipment.mounts = troops;
+          // Update mount pool
+          await db.update(schema.settlements)
+            .set({ [mountPoolKey]: mountPool - troops })
+            .where(eq(schema.settlements.id, settlement.id));
+        }
       }
+
+      // Deduct recruits from pool
       await db.update(schema.settlements)
-        .set({ storage })
+        .set({
+          draftedRecruits: settlement.draftedRecruits - troops,
+          storage,
+        })
         .where(eq(schema.settlements.id, settlement.id));
 
-      // Recruit gold cost: 200 per unit
-      const recruitCost = 200;
+      // Deduct gold cost
+      const recruitCost = 200 + template.companiesOrSquadrons * 50;
       const playerRow = updatedPlayers.find(p => p.id === player.id);
       if (!playerRow || playerRow.gold < recruitCost) continue;
       await db.update(schema.players)
         .set({ gold: playerRow.gold - recruitCost })
         .where(eq(schema.players.id, player.id));
 
+      // Determine default position and get hex for mount breed
+      const defaultPos = getDefaultPosition(template.isMounted, template.primary as PrimaryWeapon | null);
+
+      const [hex] = await db.select().from(schema.gameHexes)
+        .where(and(
+          eq(schema.gameHexes.gameId, gameId),
+          eq(schema.gameHexes.q, settlement.hexQ),
+          eq(schema.gameHexes.r, settlement.hexR),
+        ));
+
       // Create the unit
       await db.insert(schema.units).values({
         armyId: army.id,
-        type: unitType,
-        position: unitDef.defaultPosition,
-        strengthPct: 100,
+        templateId: template.id,
+        position: defaultPos,
+        troopCounts: { rookie: troops, capable: 0, veteran: 0 },
         state: 'full',
-        veterancy: 'fresh',
         xp: 0,
+        heldEquipment,
+        isOutdated: false,
+        mountBreed: template.isMounted ? (hex?.mountBreed ?? null) : null,
       });
 
       events.push({
         type: 'unit_recruited',
-        description: `${player.countryName} recruited ${unitType} in ${settlement.name}`,
+        description: `${player.countryName} raised ${template.name} in ${settlement.name}`,
         playerIds: [player.id],
       });
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 6b-mid: Disband, Upgrade, Replenish Units
+  // ══════════════════════════════════════════════
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
+
+    // ── Disband: return held equipment to settlement storage ──
+    for (const disbandOrder of (orders.disbandUnits ?? [])) {
+      const [unit] = await db.select().from(schema.units)
+        .where(eq(schema.units.id, disbandOrder.unitId));
+      if (!unit) continue;
+      const [army] = await db.select().from(schema.armies)
+        .where(eq(schema.armies.id, unit.armyId));
+      if (!army || army.ownerId !== player.id) continue;
+
+      // Find settlement at army's hex
+      const [nearestSettlement] = await db.select().from(schema.settlements)
+        .where(and(
+          eq(schema.settlements.gameId, gameId),
+          eq(schema.settlements.ownerId, player.id),
+          eq(schema.settlements.hexQ, army.hexQ),
+          eq(schema.settlements.hexR, army.hexR),
+        ));
+
+      if (nearestSettlement) {
+        const [tmpl] = await db.select().from(schema.unitTemplates)
+          .where(eq(schema.unitTemplates.id, unit.templateId));
+
+        const storage = { ...(nearestSettlement.storage as Record<string, number>) };
+        const storageCap = getStorageCap(nearestSettlement.tier as SettlementTier);
+        const held = unit.heldEquipment as { primary: number; sidearm: number; armour: number; mounts: number };
+
+        if (tmpl?.primary && held.primary > 0) {
+          storage[tmpl.primary] = Math.min(storageCap, (storage[tmpl.primary] ?? 0) + held.primary);
+        }
+        if (tmpl?.sidearm && held.sidearm > 0) {
+          storage[tmpl.sidearm] = Math.min(storageCap, (storage[tmpl.sidearm] ?? 0) + held.sidearm);
+        }
+        if (tmpl?.armour && held.armour > 0) {
+          storage[tmpl.armour] = Math.min(storageCap, (storage[tmpl.armour] ?? 0) + held.armour);
+        }
+        if (tmpl?.mount && held.mounts > 0) {
+          const mountKey = tmpl.mount === 'horse' ? 'horses'
+            : tmpl.mount === 'gryphon' ? 'griffins' : 'demigryphs';
+          storage[mountKey] = Math.min(storageCap, (storage[mountKey] ?? 0) + held.mounts);
+        }
+
+        await db.update(schema.settlements)
+          .set({ storage })
+          .where(eq(schema.settlements.id, nearestSettlement.id));
+      }
+
+      // Delete the unit
+      await db.delete(schema.units).where(eq(schema.units.id, unit.id));
+
+      events.push({
+        type: 'unit_disbanded',
+        description: `${player.countryName} disbanded a unit`,
+        playerIds: [player.id],
+      });
+    }
+
+    // ── Upgrade outdated units (costs equipment difference) ──
+    for (const upgradeOrder of (orders.upgradeUnits ?? [])) {
+      const [unit] = await db.select().from(schema.units)
+        .where(eq(schema.units.id, upgradeOrder.unitId));
+      if (!unit || !unit.isOutdated) continue;
+
+      const [army] = await db.select().from(schema.armies)
+        .where(eq(schema.armies.id, unit.armyId));
+      if (!army || army.ownerId !== player.id) continue;
+
+      const [settlement] = await db.select().from(schema.settlements)
+        .where(eq(schema.settlements.id, upgradeOrder.settlementId));
+      if (!settlement || settlement.ownerId !== player.id) continue;
+      if (army.hexQ !== settlement.hexQ || army.hexR !== settlement.hexR) continue;
+
+      const [tmpl] = await db.select().from(schema.unitTemplates)
+        .where(eq(schema.unitTemplates.id, unit.templateId));
+      if (!tmpl) continue;
+
+      const held = unit.heldEquipment as { primary: number; sidearm: number; armour: number; mounts: number };
+      const troops = (unit.troopCounts as { rookie: number; capable: number; veteran: number });
+      const total = troops.rookie + troops.capable + troops.veteran;
+
+      const storage = { ...(settlement.storage as Record<string, number>) };
+      const storageCap = getStorageCap(settlement.tier as SettlementTier);
+
+      // Return old equipment to storage, then pull new equipment
+      // (Simplified: swap all held equipment for the template's current spec)
+      const oldPrimary = held.primary;
+      if (tmpl.primary && oldPrimary > 0) {
+        storage[tmpl.primary] = Math.min(storageCap, (storage[tmpl.primary] ?? 0) + oldPrimary);
+      }
+      // Pull new equipment for current troops count
+      if (tmpl.primary) {
+        if ((storage[tmpl.primary] ?? 0) < total) continue;
+        storage[tmpl.primary] = (storage[tmpl.primary] ?? 0) - total;
+        held.primary = total;
+      }
+
+      await db.update(schema.settlements)
+        .set({ storage })
+        .where(eq(schema.settlements.id, settlement.id));
+
+      await db.update(schema.units)
+        .set({ isOutdated: false, heldEquipment: held })
+        .where(eq(schema.units.id, unit.id));
+    }
+
+    // ── Replenish: fill casualties from settlement storage + drafted recruits ──
+    for (const replenOrder of (orders.replenishments ?? [])) {
+      const [unit] = await db.select().from(schema.units)
+        .where(eq(schema.units.id, replenOrder.unitId));
+      if (!unit) continue;
+
+      const [army] = await db.select().from(schema.armies)
+        .where(eq(schema.armies.id, unit.armyId));
+      if (!army || army.ownerId !== player.id) continue;
+
+      const [settlement] = await db.select().from(schema.settlements)
+        .where(eq(schema.settlements.id, replenOrder.settlementId));
+      if (!settlement || settlement.ownerId !== player.id) continue;
+      if (army.hexQ !== settlement.hexQ || army.hexR !== settlement.hexR) continue;
+
+      const [tmpl] = await db.select().from(schema.unitTemplates)
+        .where(eq(schema.unitTemplates.id, unit.templateId));
+      if (!tmpl) continue;
+
+      const troops = unit.troopCounts as { rookie: number; capable: number; veteran: number };
+      const maxTroops = tmpl.isMounted
+        ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON
+        : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
+      const casualties = maxTroops - (troops.rookie + troops.capable + troops.veteran);
+      if (casualties <= 0) continue;
+
+      // Need that many recruits + equipment
+      if (settlement.draftedRecruits < casualties) continue;
+
+      const storage = { ...(settlement.storage as Record<string, number>) };
+      const held = { ...(unit.heldEquipment as { primary: number; sidearm: number; armour: number; mounts: number }) };
+
+      if (!tmpl.isIrregular) {
+        if (tmpl.primary && (storage[tmpl.primary] ?? 0) < casualties) continue;
+        if (tmpl.primary) { storage[tmpl.primary] = (storage[tmpl.primary] ?? 0) - casualties; held.primary += casualties; }
+        if (tmpl.sidearm) { storage[tmpl.sidearm] = (storage[tmpl.sidearm] ?? 0) - casualties; held.sidearm += casualties; }
+        if (tmpl.armour) { storage[tmpl.armour] = (storage[tmpl.armour] ?? 0) - casualties; held.armour += casualties; }
+      }
+
+      // New recruits start as rookies
+      await db.update(schema.settlements)
+        .set({ draftedRecruits: settlement.draftedRecruits - casualties, storage })
+        .where(eq(schema.settlements.id, settlement.id));
+
+      await db.update(schema.units)
+        .set({
+          troopCounts: { ...troops, rookie: troops.rookie + casualties },
+          heldEquipment: held,
+          state: 'full',
+        })
+        .where(eq(schema.units.id, unit.id));
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 6b-post: Equipment Production Orders
+  // ══════════════════════════════════════════════
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
+
+    // Place new equipment orders
+    for (const eqOrder of (orders.equipmentOrders ?? [])) {
+      const [settlement] = await db.select().from(schema.settlements)
+        .where(and(
+          eq(schema.settlements.id, eqOrder.settlementId),
+          eq(schema.settlements.ownerId, player.id),
+        ));
+      if (!settlement) continue;
+
+      await db.insert(schema.equipmentOrders).values({
+        gameId,
+        settlementId: eqOrder.settlementId,
+        playerId: player.id,
+        equipmentType: eqOrder.equipmentType,
+        quantityOrdered: eqOrder.quantity,
+        quantityFulfilled: 0,
+        status: 'active',
+      });
+    }
+
+    // Cancel equipment orders
+    for (const cancelOrder of (orders.cancelEquipmentOrders ?? [])) {
+      await db.update(schema.equipmentOrders)
+        .set({ status: 'cancelled' })
+        .where(and(
+          eq(schema.equipmentOrders.id, cancelOrder.orderId),
+          eq(schema.equipmentOrders.playerId, player.id),
+        ));
+    }
+  }
+
+  // Process active equipment orders — each Arms/Armour Workshop building = +1 capacity unit per turn
+  const activeOrders = await db.select().from(schema.equipmentOrders)
+    .where(and(
+      eq(schema.equipmentOrders.gameId, gameId),
+      eq(schema.equipmentOrders.status, 'active'),
+    ));
+
+  for (const eqOrder of activeOrders) {
+    const [settlement] = await db.select().from(schema.settlements)
+      .where(eq(schema.settlements.id, eqOrder.settlementId));
+    if (!settlement) continue;
+
+    const buildings = await db.select().from(schema.buildings)
+      .where(eq(schema.buildings.settlementId, settlement.id));
+
+    // Determine which workshop type is needed for this equipment
+    const primaryWeaponKeys = Object.keys(PRIMARY_WEAPONS);
+    const sidearmWeaponKeys = Object.keys(SIDEARM_WEAPONS);
+    const armourKeys = Object.keys(ARMOUR_TYPES);
+
+    const workshopType = primaryWeaponKeys.includes(eqOrder.equipmentType) || sidearmWeaponKeys.includes(eqOrder.equipmentType)
+      ? 'arms_workshop' : armourKeys.includes(eqOrder.equipmentType) ? 'armour_workshop' : null;
+    if (!workshopType) continue;
+
+    const workshopCount = buildings.filter(b => b.type === workshopType && !b.isConstructing).length;
+    if (workshopCount === 0) continue;
+
+    const remaining = eqOrder.quantityOrdered - eqOrder.quantityFulfilled;
+    const canProduce = Math.min(remaining, workshopCount);
+
+    // Deduct input materials
+    const storage = { ...(settlement.storage as Record<string, number>) };
+    const inputs = workshopType === 'arms_workshop'
+      ? (PRIMARY_WEAPONS[eqOrder.equipmentType as PrimaryWeapon]?.inputs ?? SIDEARM_WEAPONS[eqOrder.equipmentType as SidearmWeapon]?.inputs ?? {})
+      : (ARMOUR_TYPES[eqOrder.equipmentType as ArmourType]?.inputs ?? {});
+
+    let hasInputs = true;
+    for (const [mat, qty] of Object.entries(inputs)) {
+      if ((storage[mat] ?? 0) < (qty ?? 0) * canProduce) { hasInputs = false; break; }
+    }
+    if (!hasInputs) continue;
+
+    for (const [mat, qty] of Object.entries(inputs)) {
+      storage[mat] = (storage[mat] ?? 0) - (qty ?? 0) * canProduce;
+    }
+
+    // Add produced equipment to storage
+    const storageCap = getStorageCap(settlement.tier as SettlementTier);
+    storage[eqOrder.equipmentType] = Math.min(storageCap, (storage[eqOrder.equipmentType] ?? 0) + canProduce);
+
+    const newFulfilled = eqOrder.quantityFulfilled + canProduce;
+    const isComplete = newFulfilled >= eqOrder.quantityOrdered;
+
+    await db.update(schema.settlements)
+      .set({ storage })
+      .where(eq(schema.settlements.id, settlement.id));
+
+    await db.update(schema.equipmentOrders)
+      .set({
+        quantityFulfilled: newFulfilled,
+        status: isComplete ? 'fulfilled' : 'active',
+      })
+      .where(eq(schema.equipmentOrders.id, eqOrder.id));
+
+    if (isComplete) {
+      const orderPlayer = activePlayers.find(p => p.id === eqOrder.playerId);
+      if (orderPlayer) {
+        events.push({
+          type: 'equipment_order_fulfilled',
+          description: `${settlement.name} completed production of ${eqOrder.quantityOrdered} ${eqOrder.equipmentType}`,
+          playerIds: [orderPlayer.id],
+        });
+      }
     }
   }
 
@@ -892,6 +1453,44 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
 
     if (activeAtkUnits.length === 0 || activeDefUnits.length === 0) continue;
 
+    // Load all templates for these units
+    const allCombatUnitIds = [...activeAtkUnits, ...activeDefUnits].map(u => u.templateId).filter(Boolean) as string[];
+    const allTemplates = allCombatUnitIds.length > 0
+      ? await db.select().from(schema.unitTemplates).where(
+          eq(schema.unitTemplates.gameId, gameId)
+        )
+      : [];
+
+    // Load all weapon designs for this game (used by computeUnitStats)
+    const allWeaponDesigns = await db.select().from(schema.weaponDesigns)
+      .where(eq(schema.weaponDesigns.gameId, gameId));
+
+    function buildCombatUnit(u: typeof atkUnits[0]): CombatUnitInput | null {
+      const tmpl = allTemplates.find(t => t.id === u.templateId) as UnitTemplate | undefined;
+      if (!tmpl) return null;
+      const troopCounts = (u.troopCounts ?? { rookie: 0, capable: 0, veteran: 0 }) as TroopCounts;
+      const maxTroops = tmpl.isMounted
+        ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON
+        : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
+      const stats = computeUnitStats(tmpl, allWeaponDesigns as WeaponDesign[]);
+      return {
+        id: u.id,
+        unitName: u.name ?? tmpl.name,
+        position: (u.position ?? getDefaultPosition(tmpl.isMounted)) as UnitPosition,
+        state: u.state as UnitState,
+        xp: u.xp ?? 0,
+        troopCounts,
+        maxTroops,
+        fire: stats.fire,
+        shock: stats.shock,
+        defence: stats.defence,
+        morale: stats.morale,
+        armour: stats.armour,
+        ap: stats.ap,
+        hitsOn: stats.hitsOn,
+      };
+    }
+
     // Load generals
     const [atkGeneral] = atkArmy.generalId
       ? await db.select().from(schema.generals).where(eq(schema.generals.id, atkArmy.generalId))
@@ -907,6 +1506,11 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     // Generate combat seed
     const combatSeed = hashSeed(`${gameId}:${turnNumber}:${atkArmy.id}:${defArmy.id}`);
 
+    const atkCombatUnits = activeAtkUnits.map(buildCombatUnit).filter((u): u is CombatUnitInput => u !== null);
+    const defCombatUnits = activeDefUnits.map(buildCombatUnit).filter((u): u is CombatUnitInput => u !== null);
+
+    if (atkCombatUnits.length === 0 || defCombatUnits.length === 0) continue;
+
     const combatInput: CombatInput = {
       id: `combat-${turnNumber}-${atkArmy.id}-${defArmy.id}`,
       seed: combatSeed,
@@ -915,28 +1519,12 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       attacker: {
         armyId: atkArmy.id,
         commandRating: atkGeneral?.commandRating ?? 0,
-        units: activeAtkUnits.map(u => ({
-          id: u.id,
-          type: u.type as UnitType,
-          position: (u.position ?? 'frontline') as UnitPosition,
-          strengthPct: u.strengthPct,
-          state: u.state as UnitState,
-          veterancy: (u.veterancy ?? 'fresh') as Veterancy,
-          xp: u.xp ?? 0,
-        })),
+        units: atkCombatUnits,
       },
       defender: {
         armyId: defArmy.id,
         commandRating: defGeneral?.commandRating ?? 0,
-        units: activeDefUnits.map(u => ({
-          id: u.id,
-          type: u.type as UnitType,
-          position: (u.position ?? 'frontline') as UnitPosition,
-          strengthPct: u.strengthPct,
-          state: u.state as UnitState,
-          veterancy: (u.veterancy ?? 'fresh') as Veterancy,
-          xp: u.xp ?? 0,
-        })),
+        units: defCombatUnits,
       },
     };
 
@@ -945,15 +1533,23 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
 
     // Apply combat results to units in DB
     for (const loss of [...result.attackerLosses, ...result.defenderLosses]) {
+      const endTotal = loss.endTroops;
+      const maxTroops = allTemplates.find(t => t.id === loss.templateId) ?
+        (() => {
+          const tmpl = allTemplates.find(t => t.id === loss.templateId)!;
+          return tmpl.isMounted ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
+        })() : 100;
+      const pct = maxTroops > 0 ? endTotal / maxTroops : 0;
       const newState = loss.destroyed ? 'destroyed'
-        : loss.endStrength < 40 ? 'broken'
-        : loss.endStrength < 60 ? 'depleted'
+        : pct < 0.4 ? 'broken'
+        : pct < 0.6 ? 'depleted'
         : 'full';
 
       await db.update(schema.units)
         .set({
-          strengthPct: Math.max(0, Math.round(loss.endStrength)),
+          troopCounts: loss.endTroopCounts,
           state: newState,
+          xp: loss.xpGained,
         })
         .where(eq(schema.units.id, loss.unitId));
     }

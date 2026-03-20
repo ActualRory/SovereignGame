@@ -19,6 +19,9 @@ export const relationTypeEnum = pgEnum('relation_type', [
   'neutral', 'nap', 'alliance', 'military_union', 'war', 'vassal',
 ]);
 export const tradeTierEnum = pgEnum('trade_tier', ['open_trade', 'trade_route', 'economic_union']);
+export const weaponDesignStatusEnum = pgEnum('weapon_design_status', ['developing', 'ready', 'retired']);
+export const equipmentOrderStatusEnum = pgEnum('equipment_order_status', ['active', 'fulfilled', 'cancelled']);
+export const officerRankEnum = pgEnum('officer_rank', ['major', 'colonel', 'general']);
 
 // ─── Tables ───
 
@@ -79,6 +82,8 @@ export const gameHexes = pgTable('game_hexes', {
   claimStartedTurn: integer('claim_started_turn'),
   settlementId: uuid('settlement_id'),
   customName: text('custom_name'),
+  /** Horse or gryphon breed native to this hex; inherited by drafted mounts. */
+  mountBreed: text('mount_breed'),
 }, (table) => [
   uniqueIndex('game_hex_coord_idx').on(table.gameId, table.q, table.r),
 ]);
@@ -107,6 +112,14 @@ export const settlements = pgTable('settlements', {
   isCapital: boolean('is_capital').notNull().default(false),
   storage: jsonb('storage').$type<Record<string, number>>().notNull().default({}),
   constructionQueue: jsonb('construction_queue').$type<unknown[]>().notNull().default([]),
+  /** Manpower drafted from population and held ready for unit creation. */
+  draftedRecruits: integer('drafted_recruits').notNull().default(0),
+  /** Horses moved from storage to the mount pool (cost maintenance per turn). */
+  draftedHorses: integer('drafted_horses').notNull().default(0),
+  /** Gryphons in the mount pool. */
+  draftedGryphons: integer('drafted_gryphons').notNull().default(0),
+  /** Demigryphs bred from horses + gryphons. */
+  draftedDemigryphs: integer('drafted_demigryphs').notNull().default(0),
 }, (table) => [
   index('settlements_game_idx').on(table.gameId),
 ]);
@@ -139,15 +152,22 @@ export const armies = pgTable('armies', {
 export const units = pgTable('units', {
   id: uuid('id').primaryKey().defaultRandom(),
   armyId: uuid('army_id').notNull().references(() => armies.id),
-  type: text('type').notNull(),
+  /** References unit_templates.id — defines the equipment and size of this unit. */
+  templateId: uuid('template_id').notNull(),
   name: text('name'),
   subtitle: text('subtitle'),
-  strengthPct: integer('strength_pct').notNull().default(100),
+  /** Individual troop counts: { rookie, capable, veteran } */
+  troopCounts: jsonb('troop_counts').$type<{ rookie: number; capable: number; veteran: number }>().notNull().default({ rookie: 0, capable: 0, veteran: 0 }),
   state: unitStateEnum('state').notNull().default('full'),
-  veterancy: veterancyEnum('veterancy').notNull().default('fresh'),
   xp: integer('xp').notNull().default(0),
   position: unitPositionEnum('position').notNull().default('frontline'),
   isRecruiting: boolean('is_recruiting').notNull().default(false),
+  /** True when the unit's template has been modified since the unit was raised. */
+  isOutdated: boolean('is_outdated').notNull().default(false),
+  /** Equipment held by the unit (transferred from storage on raise; returned on disband). */
+  heldEquipment: jsonb('held_equipment').$type<{ primary: number; sidearm: number; armour: number; mounts: number }>().notNull().default({ primary: 0, sidearm: 0, armour: 0, mounts: 0 }),
+  /** Breed of mounts in this unit (null for infantry). */
+  mountBreed: text('mount_breed'),
 });
 
 export const ships = pgTable('ships', {
@@ -171,7 +191,59 @@ export const generals = pgTable('generals', {
   commandRating: integer('command_rating').notNull().default(2),
   xp: integer('xp').notNull().default(0),
   isAdmiral: boolean('is_admiral').notNull().default(false),
+  /** Officer rank. Major+ can lead a unit; Colonel+ can command an army. */
+  rank: officerRankEnum('rank').notNull().default('major'),
+  /** Unit this officer is currently assigned to. Null = in officer pool. */
+  assignedUnitId: uuid('assigned_unit_id'),
 });
+
+export const unitTemplates = pgTable('unit_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  gameId: uuid('game_id').notNull().references(() => games.id),
+  playerId: uuid('player_id').notNull().references(() => players.id),
+  name: text('name').notNull(),
+  isIrregular: boolean('is_irregular').notNull().default(false),
+  isMounted: boolean('is_mounted').notNull().default(false),
+  companiesOrSquadrons: integer('companies_or_squadrons').notNull().default(3),
+  primary: text('primary_weapon'),
+  sidearm: text('sidearm_weapon'),
+  armour: text('armour_type'),
+  mount: text('mount_type'),
+  weaponDesignId: uuid('weapon_design_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('unit_templates_player_idx').on(table.gameId, table.playerId),
+]);
+
+export const weaponDesigns = pgTable('weapon_designs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  gameId: uuid('game_id').notNull().references(() => games.id),
+  playerId: uuid('player_id').notNull().references(() => players.id),
+  baseWeapon: text('base_weapon').notNull(),
+  name: text('name').notNull(),
+  statModifiers: jsonb('stat_modifiers').$type<Record<string, number>>().notNull().default({}),
+  costModifier: integer('cost_modifier').notNull().default(0), // stored as ×100 integer, e.g. -30 = -0.30
+  status: weaponDesignStatusEnum('status').notNull().default('developing'),
+  turnsRemaining: integer('turns_remaining').notNull().default(2),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('weapon_designs_player_idx').on(table.gameId, table.playerId),
+]);
+
+export const equipmentOrders = pgTable('equipment_orders', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  gameId: uuid('game_id').notNull().references(() => games.id),
+  settlementId: uuid('settlement_id').notNull().references(() => settlements.id),
+  playerId: uuid('player_id').notNull().references(() => players.id),
+  equipmentType: text('equipment_type').notNull(),
+  quantityOrdered: integer('quantity_ordered').notNull(),
+  quantityFulfilled: integer('quantity_fulfilled').notNull().default(0),
+  status: equipmentOrderStatusEnum('status').notNull().default('active'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('equipment_orders_settlement_idx').on(table.gameId, table.settlementId),
+]);
 
 export const techProgress = pgTable('tech_progress', {
   id: uuid('id').primaryKey().defaultRandom(),

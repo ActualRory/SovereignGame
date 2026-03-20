@@ -30,17 +30,22 @@ export type ResourceType =
   | 'grain' | 'cattle' | 'fruit' | 'fish'
   // Construction
   | 'stone' | 'wood'
-  // Military chain
+  // Military chain (raw)
   | 'iron_ore' | 'gold_ore' | 'wild_horses' | 'gryphons'
   | 'sulphur'
-  // Processed — these are produced by buildings, not found on map
+  // Processed — produced by buildings, not found on map
   | 'food' | 'timber' | 'brick' | 'iron' | 'steel' | 'gold_ingots'
-  // Equipment
-  | 'spears' | 'swords' | 'halberds' | 'bows' | 'crossbows'
-  | 'rifles' | 'armour' | 'uniforms' | 'gunpowder'
-  | 'horses' | 'griffins'
-  // Currency (tracked separately but typed here for completeness)
-  | 'wool' | 'cotton';
+  | 'gunpowder' | 'leather'
+  // Mounts (in settlement storage; drafted to mount pool separately)
+  | 'horses' | 'griffins' | 'demigryphs'
+  // Primary weapons (produced by Arms Workshop)
+  | 'greataxe' | 'greatsword' | 'polearm' | 'longbow' | 'musket' | 'rifle'
+  // Secondary weapons (produced by Arms Workshop)
+  | 'shortsword' | 'longsword' | 'sabre' | 'handgun'
+  // Armour (produced by Armour Workshop)
+  | 'gambeson' | 'mail' | 'plate' | 'breastplate'
+  // Textiles
+  | 'wool' | 'cotton' | 'uniforms';
 
 /**
  * River edges are identified by the direction from this hex to the neighbor.
@@ -85,4 +90,9 @@ export interface GameHex {
   ownerId: string | null;
   claimStartedTurn: number | null;
   settlementId: string | null;
+  /**
+   * The mount breed native to this hex, assigned at map generation.
+   * Horses and gryphons drafted from this hex inherit this breed.
+   */
+  mountBreed: string | null;
 }

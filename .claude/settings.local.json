@@ -19,7 +19,8 @@
       "Bash(taskkill //F //PID 32616)",
       "Bash(taskkill //F //PID 32540)",
       "Bash(find 'c:\\\\Users\\\\Rory\\\\Kingdoms Game\\\\apps\\\\server\\\\src' -type f -name *.ts)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "Bash(xargs grep:*)"
     ]
   }
 }

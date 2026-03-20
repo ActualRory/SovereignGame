@@ -53,6 +53,22 @@ export function TurnBar() {
         lettersSent: [],
         tradeProposals: pendingOrders.tradeProposals,
         tradeCancellations: pendingOrders.tradeCancellations,
+        createTemplates: pendingOrders.createTemplates,
+        updateTemplates: pendingOrders.updateTemplates,
+        deleteTemplates: pendingOrders.deleteTemplates,
+        createWeaponDesigns: pendingOrders.createWeaponDesigns,
+        retireWeaponDesigns: pendingOrders.retireWeaponDesigns,
+        draftRecruits: pendingOrders.draftRecruits,
+        dismissRecruits: pendingOrders.dismissRecruits,
+        draftMounts: pendingOrders.draftMounts,
+        dismissMounts: pendingOrders.dismissMounts,
+        placeEquipmentOrders: pendingOrders.placeEquipmentOrders,
+        cancelEquipmentOrders: pendingOrders.cancelEquipmentOrders,
+        disbandUnits: pendingOrders.disbandUnits,
+        upgradeUnits: pendingOrders.upgradeUnits,
+        replenishments: pendingOrders.replenishments,
+        assignOfficers: pendingOrders.assignOfficers,
+        unassignOfficers: pendingOrders.unassignOfficers,
       };
 
       const res = await fetch(`/api/games/${slug}/orders`, {

@@ -70,37 +70,11 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   },
 
   // ── Processing ──
-  blacksmith: {
-    category: 'processing', costTier: 'standard', minSettlement: 'village',
-    materials: ['stone', 'timber'], usesSlot: true,
-    input: { iron: 1 }, output: { spears: 2 }, // also swords, halberds (configurable)
-  },
-  bowyer: {
-    category: 'processing', costTier: 'basic', minSettlement: 'village',
-    materials: ['timber'], usesSlot: true,
-    input: { timber: 1 }, output: { bows: 2 }, // also crossbows
-  },
-  armourer: {
-    category: 'processing', costTier: 'advanced', minSettlement: 'town',
-    materials: ['stone', 'iron'], usesSlot: true,
-    input: { steel: 2 }, output: { armour: 1 },
-  },
   foundry: {
     category: 'processing', costTier: 'advanced', minSettlement: 'town',
     materials: ['stone', 'iron'], usesSlot: true,
     techRequired: 'foundry',
     input: { iron: 2 }, output: { steel: 1 },
-  },
-  gunsmith: {
-    category: 'processing', costTier: 'advanced', minSettlement: 'city',
-    materials: ['stone', 'steel'], usesSlot: true,
-    techRequired: 'firearms',
-    input: { iron: 1, gunpowder: 1 }, output: { rifles: 1 },
-  },
-  tailor: {
-    category: 'processing', costTier: 'standard', minSettlement: 'town',
-    materials: ['timber'], usesSlot: true,
-    input: { wool: 1 }, output: { uniforms: 2 }, // or cotton
   },
   alchemist: {
     category: 'processing', costTier: 'advanced', minSettlement: 'town',
@@ -114,6 +88,38 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     techRequired: 'banking',
     input: { gold_ingots: 1 }, output: {}, // converts to gold currency
     effect: 'Converts Gold Ingots to Gold (gp)',
+  },
+  tailor: {
+    category: 'processing', costTier: 'standard', minSettlement: 'town',
+    materials: ['timber'], usesSlot: true,
+    input: { wool: 1 }, output: { uniforms: 2 }, // or cotton
+  },
+  tannery: {
+    category: 'processing', costTier: 'basic', minSettlement: 'village',
+    materials: ['timber'], usesSlot: true,
+    input: { cattle: 1 }, output: { leather: 3 },
+  },
+  /**
+   * Arms Workshop — produces any unlocked weapon (primary or secondary).
+   * Accepts equipment orders; each workshop building = +1 capacity unit per turn.
+   * Contributes to settlement tax wealth whether producing or idle.
+   * The specific weapon produced and its inputs are determined by the active order.
+   */
+  arms_workshop: {
+    category: 'processing', costTier: 'standard', minSettlement: 'village',
+    materials: ['stone', 'timber'], usesSlot: true,
+    input: {}, output: {}, // inputs/outputs vary by equipment order
+    effect: 'Accepts weapon production orders (primaries & secondaries)',
+  },
+  /**
+   * Armour Workshop — produces any unlocked armour type.
+   * Same order-based model as Arms Workshop.
+   */
+  armour_workshop: {
+    category: 'processing', costTier: 'advanced', minSettlement: 'town',
+    materials: ['stone', 'iron'], usesSlot: true,
+    input: {}, output: {}, // inputs/outputs vary by equipment order
+    effect: 'Accepts armour production orders',
   },
 
   // ── Civic ──

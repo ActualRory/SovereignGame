@@ -23,6 +23,9 @@ export * from './constants/combat.js';
 export * from './constants/stability.js';
 export * from './constants/starting.js';
 export * from './constants/settlements.js';
+export * from './constants/weapons.js';
+export * from './constants/armour.js';
+export * from './constants/mounts.js';
 
 // Logic
 export * from './logic/economy.js';

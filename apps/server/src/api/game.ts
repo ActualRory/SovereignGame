@@ -147,13 +147,34 @@ gameRouter.post('/:slug/start', async (req, res) => {
       hexR: start.r,
     }).returning();
 
-    // Create starting units
+    // Create starting Irregulars template for each player
+    const [irregularsTemplate] = await db.insert(schema.unitTemplates).values({
+      gameId: game.id,
+      playerId: player.id,
+      name: 'Irregulars',
+      isIrregular: true,
+      isMounted: false,
+      companiesOrSquadrons: 3,
+      primary: null,
+      sidearm: null,
+      armour: null,
+      mount: null,
+      weaponDesignId: null,
+    }).returning();
+
+    // Create starting units using the new template system
     for (const unitDef of STARTING_CONDITIONS.units) {
       for (let i = 0; i < unitDef.count; i++) {
         await db.insert(schema.units).values({
           armyId: army.id,
-          type: unitDef.type,
+          templateId: irregularsTemplate.id,
           position: 'frontline',
+          troopCounts: { rookie: 300, capable: 0, veteran: 0 },
+          state: 'full',
+          xp: 0,
+          heldEquipment: { primary: 0, sidearm: 0, armour: 0, mounts: 0 },
+          isOutdated: false,
+          mountBreed: null,
         });
       }
     }
@@ -208,7 +229,7 @@ gameRouter.get('/:slug/state', async (req, res) => {
   }
 
   // Fetch all game data
-  const [gamePlayers, hexes, allSettlements, allArmies, allTechProgress, allRelations, allLetters, allTrades] = await Promise.all([
+  const [gamePlayers, hexes, allSettlements, allArmies, allTechProgress, allRelations, allLetters, allTrades, allTemplates, allDesigns, allEquipmentOrders] = await Promise.all([
     db.select().from(schema.players).where(eq(schema.players.gameId, game.id)),
     db.select().from(schema.gameHexes).where(eq(schema.gameHexes.gameId, game.id)),
     db.select().from(schema.settlements).where(eq(schema.settlements.gameId, game.id)),
@@ -217,6 +238,9 @@ gameRouter.get('/:slug/state', async (req, res) => {
     db.select().from(schema.diplomacyRelations).where(eq(schema.diplomacyRelations.gameId, game.id)),
     db.select().from(schema.letters).where(eq(schema.letters.gameId, game.id)),
     db.select().from(schema.tradeAgreements).where(eq(schema.tradeAgreements.gameId, game.id)),
+    db.select().from(schema.unitTemplates).where(eq(schema.unitTemplates.gameId, game.id)),
+    db.select().from(schema.weaponDesigns).where(eq(schema.weaponDesigns.gameId, game.id)),
+    db.select().from(schema.equipmentOrders).where(eq(schema.equipmentOrders.gameId, game.id)),
   ]);
 
   // Fetch buildings for each settlement
@@ -275,6 +299,9 @@ gameRouter.get('/:slug/state', async (req, res) => {
   const myTrades = allTrades.filter(t =>
     t.playerAId === player.id || t.playerBId === player.id
   );
+  const myTemplates = allTemplates.filter(t => t.playerId === player.id);
+  const myDesigns = allDesigns.filter(d => d.playerId === player.id);
+  const myEquipmentOrders = allEquipmentOrders.filter(o => o.playerId === player.id);
 
   // Fetch latest combat logs + event log (from previous turn)
   const prevTurn = game.currentTurn - 1;
@@ -304,7 +331,7 @@ gameRouter.get('/:slug/state', async (req, res) => {
 
   try {
     const filtered = await buildFilteredState(game.id, player.id, rawState);
-    res.json({ ...filtered, combatLogs: latestCombatLogs, eventLog: latestEventLog, techProgress: myTech, letters: myLetters, diplomacyRelations: myRelations, tradeAgreements: myTrades });
+    res.json({ ...filtered, combatLogs: latestCombatLogs, eventLog: latestEventLog, techProgress: myTech, letters: myLetters, diplomacyRelations: myRelations, tradeAgreements: myTrades, unitTemplates: myTemplates, weaponDesigns: myDesigns, equipmentOrders: myEquipmentOrders });
   } catch (err) {
     console.error('Fog filter error:', err);
     res.json({
@@ -321,6 +348,9 @@ gameRouter.get('/:slug/state', async (req, res) => {
       letters: myLetters,
       diplomacyRelations: myRelations,
       tradeAgreements: myTrades,
+      unitTemplates: myTemplates,
+      weaponDesigns: myDesigns,
+      equipmentOrders: myEquipmentOrders,
     });
   }
 });

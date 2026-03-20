@@ -13,8 +13,8 @@ export type BuildingType =
   // Extraction
   | 'farm' | 'fishery' | 'sawmill' | 'quarry' | 'mine' | 'stables' | 'griffin_lodge'
   // Processing
-  | 'blacksmith' | 'bowyer' | 'armourer' | 'foundry' | 'gunsmith'
-  | 'tailor' | 'alchemist' | 'bank'
+  | 'foundry' | 'alchemist' | 'bank' | 'tailor' | 'tannery'
+  | 'arms_workshop' | 'armour_workshop'
   // Civic
   | 'library' | 'academy' | 'college' | 'university' | 'port'
   // Military

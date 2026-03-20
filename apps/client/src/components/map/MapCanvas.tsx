@@ -50,7 +50,7 @@ export function MapCanvas() {
       const app = new Application();
       await app.init({
         resizeTo: container,
-        background: 0xd6c5a0,
+        background: 0x1a1410,
         antialias: true,
       });
 
@@ -261,11 +261,11 @@ export function MapCanvas() {
       const tg = new Graphics();
       tg.poly(offsetCorners);
       tg.fill({ color: fillColor, alpha: fogState === 'soft_fog' ? 0.5 : 1.0 });
-      tg.stroke({ color: 0x8b7355, width: 1 });
+      tg.stroke({ color: 0x3d3225, width: 1 });
 
       if (fogState === 'soft_fog') {
         tg.poly(offsetCorners);
-        tg.fill({ color: 0x000000, alpha: 0.25 });
+        tg.fill({ color: 0x000000, alpha: 0.4 });
       }
       terrainLayer.addChild(tg);
 
@@ -273,7 +273,7 @@ export function MapCanvas() {
       if (h.ownerId) {
         const bg = new Graphics();
         const ownerColor = playerColors.get(h.ownerId);
-        const borderColor = ownerColor ? parseInt(ownerColor.replace('#', ''), 16) : 0x2c1810;
+        const borderColor = ownerColor ? parseInt(ownerColor.replace('#', ''), 16) : 0x3d3225;
         bg.poly(offsetCorners);
         bg.stroke({ color: borderColor, width: 2.5, alpha: 0.8 });
         borderLayer.addChild(bg);
@@ -313,8 +313,8 @@ export function MapCanvas() {
         };
         const size = tierSize[settlement.tier] ?? 8;
         ig.rect(pos.x - size / 2, pos.y - size / 2 - 4, size, size);
-        ig.fill({ color: settlement.isCapital ? 0xB8860B : 0x8B4513 });
-        ig.stroke({ color: 0x2c1810, width: 1 });
+        ig.fill({ color: settlement.isCapital ? 0xd4a017 : 0xA0673A });
+        ig.stroke({ color: 0x1a1410, width: 1 });
         iconLayer.addChild(ig);
       }
 
@@ -329,7 +329,7 @@ export function MapCanvas() {
           const color = ownerColor ? parseInt(ownerColor.replace('#', ''), 16) : 0x666666;
           ag.circle(ax, ay, 5);
           ag.fill({ color });
-          ag.stroke({ color: 0x2c1810, width: 1 });
+          ag.stroke({ color: 0x1a1410, width: 1 });
           iconLayer.addChild(ag);
         }
       }

@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useStore } from '../../store/index.js';
-import { UNITS, VETERANCY_BONUS, type UnitType } from '@kingdoms/shared';
+import {
+  UNITS, VETERANCY_BONUS, STATE_DICE_MULTIPLIER, SHIPS,
+  type UnitType, type ShipType,
+} from '@kingdoms/shared';
+import { Tooltip } from '../shared/Tooltip.js';
 
 const UNIT_DESCRIPTIONS: Record<string, string> = {
   irregulars: 'Untrained levies mustered in times of need. Cheap and expendable, they hold the line until better men arrive.',
@@ -137,6 +141,138 @@ export function MilitaryTab() {
           })}
         </>
       )}
+
+      {/* Unit Codex */}
+      <UnitCodex />
+
+      {/* Naval Codex */}
+      <NavalCodex />
+    </div>
+  );
+}
+
+/* ─── Unit Codex ─── */
+
+function UnitCodex() {
+  const [open, setOpen] = useState(false);
+  const eras = ['early', 'middle', 'late'] as const;
+
+  return (
+    <div className="codex-section">
+      <button className="codex-header" onClick={() => setOpen(!open)}>
+        <span>Unit Codex</span>
+        <span className={`codex-toggle ${open ? 'open' : ''}`}>▸</span>
+      </button>
+      {open && (
+        <div className="codex-body">
+          {eras.map(era => {
+            const units = (Object.entries(UNITS) as [string, any][]).filter(([, s]) => s.era === era);
+            return (
+              <div key={era} className="codex-category">
+                <div className="codex-category-title">{formatName(era)} Era</div>
+                {units.map(([type, stats]) => (
+                  <div key={type} className="codex-entry">
+                    <div className="codex-entry-name">{formatName(type)}</div>
+                    <div className="codex-entry-stats">
+                      <div className="codex-stat"><span className="codex-stat-label">Fire</span><span className="codex-stat-value">{stats.fire}</span></div>
+                      <div className="codex-stat"><span className="codex-stat-label">Shock</span><span className="codex-stat-value">{stats.shock}</span></div>
+                      <div className="codex-stat"><span className="codex-stat-label">Def</span><span className="codex-stat-value">{stats.defence}</span></div>
+                      <div className="codex-stat"><span className="codex-stat-label">Morale</span><span className="codex-stat-value">{stats.morale}</span></div>
+                      <div className="codex-stat"><span className="codex-stat-label">Armour</span><span className="codex-stat-value">{stats.armour}</span></div>
+                      <div className="codex-stat"><span className="codex-stat-label">AP</span><span className="codex-stat-value">{stats.ap}</span></div>
+                      <div className="codex-stat"><span className="codex-stat-label">Hits</span><span className="codex-stat-value">{stats.hitsOn}+</span></div>
+                    </div>
+                    <div className="codex-entry-tags">
+                      <span className="codex-tag">{stats.defaultPosition}</span>
+                      {stats.equipment.length > 0 && stats.equipment.map((e: string) => (
+                        <span key={e} className="codex-tag">{formatName(e)}</span>
+                      ))}
+                      {stats.equipment.length === 0 && <span className="codex-tag">No equipment</span>}
+                    </div>
+                    {UNIT_DESCRIPTIONS[type] && (
+                      <div className="codex-entry-detail" style={{ marginTop: 4 }}>{UNIT_DESCRIPTIONS[type]}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          <div className="codex-category">
+            <div className="codex-category-title">Unit States</div>
+            <div className="codex-entry">
+              <div className="codex-entry-stats">
+                {Object.entries(STATE_DICE_MULTIPLIER).map(([state, mult]) => (
+                  <div key={state} className="codex-stat">
+                    <span className="codex-stat-label">{formatName(state)}</span>
+                    <span className="codex-stat-value">x{mult}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="codex-entry-detail">Dice multiplier applied to combat rolls based on unit strength state.</div>
+            </div>
+          </div>
+
+          <div className="codex-category">
+            <div className="codex-category-title">Veterancy</div>
+            <div className="codex-entry">
+              <div className="codex-entry-stats">
+                {Object.entries(VETERANCY_BONUS).map(([level, bonus]) => (
+                  <div key={level} className="codex-stat">
+                    <span className="codex-stat-label">{formatName(level)}</span>
+                    <span className="codex-stat-value">{bonus > 0 ? `-${bonus}` : '0'}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="codex-entry-detail">Hits On reduction per veterancy level (lower is better).</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Naval Codex ─── */
+
+function NavalCodex() {
+  const [open, setOpen] = useState(false);
+  const eras = ['early', 'middle', 'late'] as const;
+
+  return (
+    <div className="codex-section">
+      <button className="codex-header" onClick={() => setOpen(!open)}>
+        <span>Naval Codex</span>
+        <span className={`codex-toggle ${open ? 'open' : ''}`}>▸</span>
+      </button>
+      {open && (
+        <div className="codex-body">
+          {eras.map(era => {
+            const ships = (Object.entries(SHIPS) as [string, any][]).filter(([, s]) => s.era === era);
+            if (ships.length === 0) return null;
+            return (
+              <div key={era} className="codex-category">
+                <div className="codex-category-title">{formatName(era)} Era</div>
+                {ships.map(([type, stats]) => (
+                  <div key={type} className="codex-entry">
+                    <div className="codex-entry-name">{formatName(type)}</div>
+                    <div className="codex-entry-stats">
+                      <div className="codex-stat"><span className="codex-stat-label">Fire</span><span className="codex-stat-value">{stats.fire}</span></div>
+                      <div className="codex-stat"><span className="codex-stat-label">Shock</span><span className="codex-stat-value">{stats.shock}</span></div>
+                      <div className="codex-stat"><span className="codex-stat-label">Def</span><span className="codex-stat-value">{stats.defence}</span></div>
+                      <div className="codex-stat"><span className="codex-stat-label">Morale</span><span className="codex-stat-value">{stats.morale}</span></div>
+                      <div className="codex-stat"><span className="codex-stat-label">Hull</span><span className="codex-stat-value">{stats.hull}</span></div>
+                      <div className="codex-stat"><span className="codex-stat-label">AP</span><span className="codex-stat-value">{stats.ap}</span></div>
+                      <div className="codex-stat"><span className="codex-stat-label">Hits</span><span className="codex-stat-value">{stats.hitsOn}+</span></div>
+                    </div>
+                    <div className="codex-entry-detail">{stats.notes}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -156,11 +292,13 @@ function ArmyCard({ slug, army, pendingOrders, onCancelMovement }: {
   const [subtitleValue, setSubtitleValue] = useState(army.subtitle ?? '');
   const setGameState = useStore(s => s.setGameState);
   const armies = useStore(s => s.armies);
+  const generals = useStore(s => (s as any).generals) as any[] | undefined;
 
   const units = (army.units as any[] | undefined) ?? [];
   const activeUnits = units.filter((u: any) => u.state !== 'destroyed');
   const hasPendingMove = pendingOrders.movements.some((m: any) => m.armyId === army.id);
   const hasGeneral = !!army.generalId;
+  const general = generals?.find((g: any) => g.id === army.generalId);
 
   async function saveArmyField(field: 'name' | 'subtitle', value: string) {
     const sessionToken = localStorage.getItem(`session:${slug}`);
@@ -242,6 +380,18 @@ function ArmyCard({ slug, army, pendingOrders, onCancelMovement }: {
       {/* Expanded unit roster */}
       {expanded && (
         <div className="army-unit-roster">
+          {/* General info */}
+          {general ? (
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8, padding: '6px 8px', background: 'var(--bg-inset)', borderRadius: 4, border: '1px solid var(--border-color)' }}>
+              <span style={{ color: 'var(--accent-gold)' }}>General {general.name}</span>
+              <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>Command: {general.commandRating}</span>
+              <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>XP: {general.xp ?? 0}</span>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: 6 }}>
+              No general assigned — no command bonus in battle.
+            </div>
+          )}
           {activeUnits.length === 0 && (
             <p className="army-empty-roster">This army has no active units.</p>
           )}
@@ -272,6 +422,7 @@ function UnitRow({ unit, slug, armyId }: { unit: any; slug: string; armyId: stri
   const stateInfo = STATE_LABELS[unit.state] ?? STATE_LABELS.full;
   const vetInfo = VET_LABELS[unit.veterancy] ?? VET_LABELS.fresh;
   const vetBonus = VETERANCY_BONUS[unit.veterancy] ?? 0;
+  const diceMultiplier = STATE_DICE_MULTIPLIER[unit.state] ?? 1;
   const description = UNIT_DESCRIPTIONS[unit.type] ?? '';
   const displayName = unit.name || formatName(unit.type);
 
@@ -322,10 +473,31 @@ function UnitRow({ unit, slug, armyId }: { unit: any; slug: string; armyId: stri
           )}
         </div>
         <div className="unit-row-badges">
-          <span className="unit-strength-bar" title={`${unit.strengthPct}% strength`}>
-            <span className="unit-strength-fill" style={{ width: `${unit.strengthPct}%`, background: stateInfo.color }} />
-          </span>
-          <span className="unit-vet-badge" style={{ color: vetInfo.color }}>{vetInfo.label}</span>
+          <Tooltip content={
+            <div>
+              <div className="tooltip-label">Strength</div>
+              <div>{unit.strengthPct}% — <span style={{ color: stateInfo.color }}>{stateInfo.label}</span></div>
+              <div className="tooltip-divider" />
+              <div className="tooltip-label">Dice Multiplier</div>
+              <div className="tooltip-value">x{diceMultiplier}</div>
+            </div>
+          }>
+            <span className="unit-strength-bar" title={`${unit.strengthPct}% strength`}>
+              <span className="unit-strength-fill" style={{ width: `${unit.strengthPct}%`, background: stateInfo.color }} />
+            </span>
+          </Tooltip>
+          <Tooltip content={
+            <div>
+              <div className="tooltip-label">Veterancy</div>
+              <div style={{ color: vetInfo.color }}>{vetInfo.label}</div>
+              <div className="tooltip-divider" />
+              <div className="tooltip-label">Hits On Bonus</div>
+              <div className="tooltip-value">{vetBonus > 0 ? `-${vetBonus}` : 'None'}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>XP: {unit.xp}</div>
+            </div>
+          }>
+            <span className="unit-vet-badge" style={{ color: vetInfo.color }}>{vetInfo.label}</span>
+          </Tooltip>
         </div>
       </div>
 
@@ -373,9 +545,17 @@ function UnitRow({ unit, slug, armyId }: { unit: any; slug: string; armyId: stri
             </div>
           )}
 
+          {/* Equipment */}
+          {stats && stats.equipment.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+              Equipment: {stats.equipment.map(e => formatName(e)).join(', ')}
+            </div>
+          )}
+
           {/* Status line */}
           <div className="unit-status-line">
             <span style={{ color: stateInfo.color }}>{stateInfo.label} ({unit.strengthPct}%)</span>
+            <span>Dice: x{diceMultiplier}</span>
             <span>XP: {unit.xp}</span>
             <span>Era: {stats?.era ? formatName(stats.era) : '?'}</span>
           </div>
@@ -411,20 +591,43 @@ function RecruitPanel({ settlement, armies, storage, onRecruit }: {
     );
   }
 
+  const selectedStats = UNITS[selectedType as UnitType];
+
   return (
     <div className="settlement-card" style={{ marginTop: 8 }}>
       <strong>{settlement.name}</strong>
       <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <select
-          value={selectedType}
-          onChange={(e) => setSelectedType(e.target.value)}
-          className="input"
-          style={{ flex: 1, minWidth: 120, padding: '4px 8px' }}
-        >
-          {availableTypes.map(([type]) => (
-            <option key={type} value={type}>{formatName(type)}</option>
-          ))}
-        </select>
+        <Tooltip content={selectedStats ? (
+          <div>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>{formatName(selectedType)}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '2px 12px', fontSize: 12 }}>
+              <span className="tooltip-label">Fire</span><span className="tooltip-value">{selectedStats.fire}</span>
+              <span className="tooltip-label">Shock</span><span className="tooltip-value">{selectedStats.shock}</span>
+              <span className="tooltip-label">Def</span><span className="tooltip-value">{selectedStats.defence}</span>
+              <span className="tooltip-label">Morale</span><span className="tooltip-value">{selectedStats.morale}</span>
+              <span className="tooltip-label">Armour</span><span className="tooltip-value">{selectedStats.armour}</span>
+              <span className="tooltip-label">Hits On</span><span className="tooltip-value">{selectedStats.hitsOn}+</span>
+            </div>
+            {selectedStats.equipment.length > 0 && (
+              <>
+                <div className="tooltip-divider" />
+                <div className="tooltip-label">Requires</div>
+                <div>{selectedStats.equipment.map(e => formatName(e)).join(', ')}</div>
+              </>
+            )}
+          </div>
+        ) : <span>Select a unit type</span>}>
+          <select
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value)}
+            className="input"
+            style={{ flex: 1, minWidth: 120, padding: '4px 8px' }}
+          >
+            {availableTypes.map(([type]) => (
+              <option key={type} value={type}>{formatName(type)}</option>
+            ))}
+          </select>
+        </Tooltip>
         <select
           value={selectedArmy}
           onChange={(e) => setSelectedArmy(e.target.value)}

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useStore } from '../../store/index.js';
+import { TERRAIN, BUILDINGS, COST_TIERS, type BuildingType, type TerrainType } from '@kingdoms/shared';
+import { Tooltip } from '../shared/Tooltip.js';
 
 /**
  * Side panel showing detailed info about a hex.
@@ -79,9 +81,31 @@ export function HexDetailPanel() {
       )}
 
       <div className="hex-detail-terrain" style={{ marginBottom: 12 }}>
-        <span style={{ textTransform: 'capitalize', fontWeight: 600, fontSize: 16 }}>
-          {hex.terrain}
-        </span>
+        <Tooltip content={(() => {
+          const t = TERRAIN[hex.terrain as TerrainType];
+          if (!t) return <span>{hex.terrain}</span>;
+          return (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '2px 12px', fontSize: 12 }}>
+                <span className="tooltip-label">Move Cost</span><span className="tooltip-value">{t.movementCost} MP</span>
+                <span className="tooltip-label">Supply</span><span className="tooltip-value">{t.supplyValue} ({t.supply})</span>
+                <span className="tooltip-label">Defence</span><span className="tooltip-value">{t.defenceBonus > 0 ? `+${t.defenceBonus}` : '0'}</span>
+                <span className="tooltip-label">Front Width</span><span className="tooltip-value">{t.frontlineWidth}</span>
+              </div>
+              {t.possibleResources.length > 0 && (
+                <>
+                  <div className="tooltip-divider" />
+                  <div className="tooltip-label">Possible Resources</div>
+                  <div style={{ fontSize: 12 }}>{t.possibleResources.map(r => formatName(r)).join(', ')}</div>
+                </>
+              )}
+            </div>
+          );
+        })()}>
+          <span style={{ textTransform: 'capitalize', fontWeight: 600, fontSize: 16, cursor: 'help', borderBottom: '1px dotted var(--text-muted)' }}>
+            {hex.terrain}
+          </span>
+        </Tooltip>
         {fogState === 'soft_fog' && (
           <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
             (Fog)
@@ -146,12 +170,33 @@ export function HexDetailPanel() {
                   <div style={{ marginTop: 6 }}>
                     <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Buildings:</span>
                     <div className="settlement-resources" style={{ marginTop: 2 }}>
-                      {((settlement as any).buildings as any[]).map((b: any, i: number) => (
-                        <span key={i} className="resource-tag">
-                          {formatName(b.type)}
-                          {b.isConstructing && ` (${b.turnsRemaining}t)`}
-                        </span>
-                      ))}
+                      {((settlement as any).buildings as any[]).map((b: any, i: number) => {
+                        const bDef = BUILDINGS[b.type as BuildingType];
+                        const costInfo = bDef ? COST_TIERS[bDef.costTier] : null;
+                        return (
+                          <Tooltip key={i} content={
+                            bDef && costInfo ? (
+                              <div>
+                                <div style={{ fontWeight: 600, marginBottom: 2 }}>{formatName(b.type)}</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '2px 12px', fontSize: 12 }}>
+                                  <span className="tooltip-label">Maintenance</span><span className="tooltip-value">{costInfo.maintenance} gp/turn</span>
+                                </div>
+                                {bDef.output && Object.keys(bDef.output).length > 0 && (
+                                  <div style={{ fontSize: 12, marginTop: 4 }}>
+                                    Produces: {Object.entries(bDef.output).map(([r, n]) => `${n} ${formatName(r)}`).join(', ')}
+                                  </div>
+                                )}
+                                {bDef.effect && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{bDef.effect}</div>}
+                              </div>
+                            ) : <span>{formatName(b.type)}</span>
+                          }>
+                            <span className="resource-tag" style={{ cursor: 'help' }}>
+                              {formatName(b.type)}
+                              {b.isConstructing && ` (${b.turnsRemaining}t)`}
+                            </span>
+                          </Tooltip>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

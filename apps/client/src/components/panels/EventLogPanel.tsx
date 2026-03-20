@@ -24,6 +24,16 @@ export function EventLogPanel() {
 
   if (eventLog.length === 0) return null;
 
+  // Group events by turn
+  const grouped = new Map<number, any[]>();
+  for (const evt of eventLog as any[]) {
+    const turn = evt.turn ?? 0;
+    if (!grouped.has(turn)) grouped.set(turn, []);
+    grouped.get(turn)!.push(evt);
+  }
+  // Sort turns descending (most recent first)
+  const sortedTurns = [...grouped.keys()].sort((a, b) => b - a);
+
   return (
     <div className="event-log-panel">
       <div
@@ -39,13 +49,22 @@ export function EventLogPanel() {
 
       {expanded && (
         <div className="event-log-list">
-          {eventLog.map((evt: any, i: number) => (
-            <div key={i} className="event-log-entry">
-              <span
-                className="event-dot"
-                style={{ background: EVENT_COLORS[evt.type] ?? 'var(--text-muted)' }}
-              />
-              <span className="event-description">{evt.description}</span>
+          {sortedTurns.map(turn => (
+            <div key={turn}>
+              {turn > 0 && (
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: 8, marginBottom: 4, borderBottom: '1px solid var(--border-color)', paddingBottom: 2 }}>
+                  Turn {turn}
+                </div>
+              )}
+              {grouped.get(turn)!.map((evt: any, i: number) => (
+                <div key={`${turn}-${i}`} className="event-log-entry">
+                  <span
+                    className="event-dot"
+                    style={{ background: EVENT_COLORS[evt.type] ?? 'var(--text-muted)' }}
+                  />
+                  <span className="event-description">{evt.description}</span>
+                </div>
+              ))}
             </div>
           ))}
         </div>

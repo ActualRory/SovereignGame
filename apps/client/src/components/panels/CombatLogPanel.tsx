@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../../store/index.js';
+import { TERRAIN, type TerrainType } from '@kingdoms/shared';
 
 export function CombatLogPanel() {
   const combatLogs = useStore(s => s.combatLogs);
@@ -39,8 +40,25 @@ export function CombatLogPanel() {
             <div className="settlement-stats">
               <span>Terrain: {log.terrain}</span>
               <span>{log.rounds?.length ?? 0} rounds</span>
-              {log.riverCrossing && <span>River crossing</span>}
+              {log.riverCrossing && <span style={{ color: 'var(--accent-blue)' }}>River crossing</span>}
             </div>
+            {/* Terrain and command bonuses */}
+            {(() => {
+              const terrainDef = TERRAIN[log.terrain as TerrainType];
+              const defBonus = terrainDef?.defenceBonus ?? 0;
+              const width = terrainDef?.frontlineWidth;
+              const bonuses: string[] = [];
+              if (defBonus > 0) bonuses.push(`+${defBonus} terrain def`);
+              if (log.riverCrossing) bonuses.push('+1 river def');
+              if (log.attackerCommandBonus) bonuses.push(`+${log.attackerCommandBonus} atk cmd`);
+              if (log.defenderCommandBonus) bonuses.push(`+${log.defenderCommandBonus} def cmd`);
+              if (width) bonuses.push(`Width: ${log.riverCrossing ? 4 : width}`);
+              return bonuses.length > 0 ? (
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                  {bonuses.join(' · ')}
+                </div>
+              ) : null;
+            })()}
 
             {isExpanded && (
               <div style={{ marginTop: 8 }}>

@@ -1,4 +1,8 @@
+import { useState } from 'react';
 import { useStore } from '../../store/index.js';
+import {
+  TERRAIN, RIVER_CROSSING_COST, RIVER_DEFENCE_BONUS, RIVER_CROSSING_FRONTLINE_WIDTH,
+} from '@kingdoms/shared';
 
 export function MapTab() {
   const hexes = useStore(s => s.hexes);
@@ -80,6 +84,71 @@ export function MapTab() {
           </div>
         </div>
       ))}
+
+      {/* Terrain Guide */}
+      <TerrainGuide />
+    </div>
+  );
+}
+
+/* ─── Terrain Guide ─── */
+
+function TerrainGuide() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="codex-section">
+      <button className="codex-header" onClick={() => setOpen(!open)}>
+        <span>Terrain Guide</span>
+        <span className={`codex-toggle ${open ? 'open' : ''}`}>▸</span>
+      </button>
+      {open && (
+        <div className="codex-body">
+          <table className="terrain-table">
+            <thead>
+              <tr>
+                <th>Terrain</th>
+                <th>Move</th>
+                <th>Supply</th>
+                <th>Def</th>
+                <th>Width</th>
+                <th>Resources</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(TERRAIN).map(([type, stats]) => (
+                <tr key={type}>
+                  <td style={{ fontFamily: 'var(--font-heading)', textTransform: 'capitalize' }}>{type}</td>
+                  <td className="terrain-value">{stats.movementCost} MP</td>
+                  <td>
+                    <span className="terrain-value">{stats.supplyValue}</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 11, marginLeft: 4 }}>({stats.supply})</span>
+                  </td>
+                  <td className="terrain-value">{stats.defenceBonus > 0 ? `+${stats.defenceBonus}` : '—'}</td>
+                  <td className="terrain-value">{stats.frontlineWidth}</td>
+                  <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    {stats.possibleResources.length > 0
+                      ? stats.possibleResources.map(r => formatName(r)).join(', ')
+                      : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="codex-entry" style={{ marginTop: 12 }}>
+            <div className="codex-entry-name">River Crossing</div>
+            <div className="codex-entry-stats">
+              <div className="codex-stat"><span className="codex-stat-label">Extra Cost</span><span className="codex-stat-value">+{RIVER_CROSSING_COST} MP</span></div>
+              <div className="codex-stat"><span className="codex-stat-label">Def Bonus</span><span className="codex-stat-value">+{RIVER_DEFENCE_BONUS}</span></div>
+              <div className="codex-stat"><span className="codex-stat-label">Width</span><span className="codex-stat-value">{RIVER_CROSSING_FRONTLINE_WIDTH}</span></div>
+            </div>
+            <div className="codex-entry-detail">
+              Attacker crossing a river suffers extra movement cost, reduced frontline width, and the defender gains a defence bonus. Build a bridge to negate these penalties.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

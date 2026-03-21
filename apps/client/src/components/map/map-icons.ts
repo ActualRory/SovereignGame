@@ -1,7 +1,7 @@
 /**
  * Cartographic-style settlement and army icon drawing.
  * Settlements are rendered as classic map building symbols in ink-brown.
- * Armies are rendered as small banner/flag symbols in player colors.
+ * Armies are rendered as figurine silhouettes in player colors.
  */
 
 import { Graphics } from 'pixi.js';
@@ -106,7 +106,8 @@ export function drawSettlement(
 // ─── Armies ───
 
 /**
- * Draw an army banner/flag icon at the given position.
+ * Draw an army figurine silhouette at the given position.
+ * Evokes carved war-table pieces — a soldier with helmet, shield, and spear.
  */
 export function drawArmy(
   g: Graphics,
@@ -115,22 +116,49 @@ export function drawArmy(
   playerColor: number,
   isSelected: boolean
 ): void {
-  // Pole
-  g.moveTo(x, y + 5);
-  g.lineTo(x, y - 6);
-  g.stroke({ color: INK_LIGHT, width: 1.2 });
+  // Small circular base (like a tabletop miniature stand)
+  g.ellipse(x, y + 5, 7, 2.5);
+  g.fill({ color: playerColor, alpha: 0.7 });
+  g.stroke({ color: INK, width: 0.6 });
 
-  // Triangular pennant
-  g.moveTo(x, y - 6);
-  g.lineTo(x + 8, y - 4);
-  g.lineTo(x, y - 2);
+  // Body / torso (tapered rectangle)
+  g.moveTo(x - 3.5, y + 4);
+  g.lineTo(x - 2.5, y - 3);
+  g.lineTo(x + 2.5, y - 3);
+  g.lineTo(x + 3.5, y + 4);
   g.closePath();
   g.fill({ color: playerColor, alpha: 0.9 });
   g.stroke({ color: INK, width: 0.7 });
 
+  // Head (circle)
+  g.circle(x, y - 5.5, 3);
+  g.fill({ color: playerColor, alpha: 0.9 });
+  g.stroke({ color: INK, width: 0.7 });
+
+  // Helmet crest (small arc on top)
+  g.moveTo(x - 1.5, y - 8.5);
+  g.quadraticCurveTo(x, y - 11, x + 1.5, y - 8.5);
+  g.stroke({ color: INK, width: 1.2 });
+
+  // Spear (thin line from shoulder up past head)
+  g.moveTo(x + 3, y + 1);
+  g.lineTo(x + 3, y - 13);
+  g.stroke({ color: INK_LIGHT, width: 0.9 });
+  // Spear tip
+  g.moveTo(x + 3, y - 13);
+  g.lineTo(x + 1.5, y - 11);
+  g.moveTo(x + 3, y - 13);
+  g.lineTo(x + 4.5, y - 11);
+  g.stroke({ color: INK, width: 0.8 });
+
+  // Shield (small rounded shape on left arm)
+  g.ellipse(x - 4, y - 0.5, 2.5, 4);
+  g.fill({ color: playerColor, alpha: 0.8 });
+  g.stroke({ color: INK, width: 0.6 });
+
   // Selection highlight
   if (isSelected) {
-    g.circle(x + 2, y - 1, 10);
+    g.circle(x, y - 2, 12);
     g.stroke({ color: 0xFFD700, width: 2, alpha: 0.8 });
   }
 }
@@ -143,6 +171,6 @@ export function drawMoveTargetIndicator(
   x: number,
   y: number
 ): void {
-  g.circle(x + 2, y - 1, 13);
+  g.circle(x, y - 2, 14);
   g.stroke({ color: 0xFF4444, width: 2, alpha: 0.6 });
 }

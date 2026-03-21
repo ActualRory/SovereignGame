@@ -4,7 +4,6 @@ node_modules
 dist
 **/dist
 .git
-apps/client
 *.md
 .env
 .env.*

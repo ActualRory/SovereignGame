@@ -1,6 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import http from 'node:http';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
 import { Server as SocketServer } from 'socket.io';
 import { config } from './config.js';
 import { lobbyRouter } from './api/lobby.js';
@@ -31,6 +34,16 @@ app.use('/api/games', diplomacyRouter);
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
+
+// Serve built client if available
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const clientDist = path.resolve(__dirname, '../../client/dist');
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
 
 // Socket.IO
 setupSocket(io);

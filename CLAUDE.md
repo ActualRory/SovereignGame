@@ -32,7 +32,7 @@ docker compose exec server npx tsx apps/server/src/db/seed.ts
 
 ### Local dev (client only, pointing at remote server)
 ```bash
-VITE_SERVER_URL=http://rule.tastethevideogame.win:3000 pnpm dev:client
+VITE_SERVER_URL=https://rule.tastethevideogame.win pnpm dev:client
 ```
 
 ### Local dev (full stack, requires local Docker)

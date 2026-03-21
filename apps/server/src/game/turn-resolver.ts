@@ -1417,6 +1417,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   const playerNames = new Map(activePlayers.map(p => [p.id, p.countryName as string]));
 
   // Run step-by-step movement with border enforcement and mid-path combat
+  console.log(`Step 9+10: resolving movement for ${allMovementArmies.length} armies, ${allUnits.length} units`);
   const movementResult = resolveMovementStepByStep({
     gameId,
     turnNumber,
@@ -2007,14 +2008,44 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   // ══════════════════════════════════════════════
   // Save turn snapshot
   // ══════════════════════════════════════════════
-  await db.insert(schema.turnSnapshots).values({
-    gameId,
-    turnNumber,
-    snapshot: {} as any, // TODO: full state snapshot in later phases
-    combatLogs: combatLogs as any,
-    eventLog: events as any,
-    movementLog: movementLog as any,
-  });
+  try {
+    await db.insert(schema.turnSnapshots).values({
+      gameId,
+      turnNumber,
+      snapshot: {} as any, // TODO: full state snapshot in later phases
+      combatLogs: combatLogs as any,
+      eventLog: events as any,
+      movementLog: movementLog as any,
+    }).onConflictDoUpdate({
+      target: [schema.turnSnapshots.gameId, schema.turnSnapshots.turnNumber],
+      set: {
+        combatLogs: combatLogs as any,
+        eventLog: events as any,
+        movementLog: movementLog as any,
+      },
+    });
+  } catch (snapshotErr) {
+    // Fallback: if movementLog column doesn't exist yet (schema not pushed),
+    // insert without it
+    console.warn('Snapshot insert failed (possibly missing movementLog column), retrying without:', snapshotErr);
+    try {
+      await db.insert(schema.turnSnapshots).values({
+        gameId,
+        turnNumber,
+        snapshot: {} as any,
+        combatLogs: combatLogs as any,
+        eventLog: events as any,
+      } as any).onConflictDoUpdate({
+        target: [schema.turnSnapshots.gameId, schema.turnSnapshots.turnNumber],
+        set: {
+          combatLogs: combatLogs as any,
+          eventLog: events as any,
+        } as any,
+      });
+    } catch (innerErr) {
+      console.error('Snapshot insert completely failed:', innerErr);
+    }
+  }
 
   // ══════════════════════════════════════════════
   // STEP 17: Elimination + Victory Check

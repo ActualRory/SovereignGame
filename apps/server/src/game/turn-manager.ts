@@ -101,7 +101,16 @@ async function triggerTurnResolution(gameId: string, turnNumber: number, remaini
   console.log(`Resolving turn ${turnNumber} for game ${gameId}`);
 
   // Run the resolution engine
-  const result = await resolveTurn(gameId, turnNumber);
+  let result;
+  try {
+    result = await resolveTurn(gameId, turnNumber);
+  } catch (err) {
+    console.error(`Turn resolution FAILED for game ${gameId} turn ${turnNumber}:`, err);
+    // Don't re-throw — this is called from socket handlers.
+    // Re-throwing would leave the game permanently stuck.
+    // The game stays on the current turn so players can retry.
+    return;
+  }
 
   // Broadcast results to all players with events for notifications
   io?.to(`game:${gameId}`).emit('turn_resolved', {

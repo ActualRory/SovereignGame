@@ -131,40 +131,44 @@ async function triggerTurnResolution(gameId: string, turnNumber: number, remaini
   }
 
   // Start next turn (with inherited remaining time for early submit)
-  const nextTurn = turnNumber + 1;
+  try {
+    const nextTurn = turnNumber + 1;
 
-  // For early submit: next turn inherits remaining time from previous
-  const [game] = await db.select().from(schema.games).where(eq(schema.games.id, gameId));
-  if (!game) return;
+    // For early submit: next turn inherits remaining time from previous
+    const [game] = await db.select().from(schema.games).where(eq(schema.games.id, gameId));
+    if (!game) return;
 
-  const mode = game.mode as keyof typeof TURN_DURATIONS;
-  const baseDuration = TURN_DURATIONS[mode];
+    const mode = game.mode as keyof typeof TURN_DURATIONS;
+    const baseDuration = TURN_DURATIONS[mode];
 
-  if (baseDuration > 0 && remainingMs > 0 && game.earlySubmit) {
-    // Next turn gets base + remaining
-    const nextDuration = baseDuration + remainingMs;
-    await scheduleTurnDeadline(gameId, nextTurn, nextDuration);
-    const deadline = new Date(Date.now() + nextDuration).toISOString();
-    await db.update(schema.games).set({
-      currentTurn: nextTurn,
-      turnDeadline: new Date(deadline),
-    }).where(eq(schema.games.id, gameId));
-  } else {
-    await startTurn(gameId, nextTurn);
-    return; // startTurn handles the rest
+    if (baseDuration > 0 && remainingMs > 0 && game.earlySubmit) {
+      // Next turn gets base + remaining
+      const nextDuration = baseDuration + remainingMs;
+      await scheduleTurnDeadline(gameId, nextTurn, nextDuration);
+      const deadline = new Date(Date.now() + nextDuration).toISOString();
+      await db.update(schema.games).set({
+        currentTurn: nextTurn,
+        turnDeadline: new Date(deadline),
+      }).where(eq(schema.games.id, gameId));
+    } else {
+      await startTurn(gameId, nextTurn);
+      return; // startTurn handles the rest
+    }
+
+    // Reset submit flags for next turn
+    const players = await db.select().from(schema.players).where(eq(schema.players.gameId, gameId));
+    for (const p of players) {
+      if (p.isEliminated) continue;
+      await db.update(schema.players)
+        .set({ hasSubmitted: false })
+        .where(eq(schema.players.id, p.id));
+    }
+
+    io?.to(`game:${gameId}`).emit('turn_started', {
+      turnNumber: nextTurn,
+      deadline: game.turnDeadline,
+    });
+  } catch (err) {
+    console.error(`Failed to start next turn after resolving turn ${turnNumber} for game ${gameId}:`, err);
   }
-
-  // Reset submit flags for next turn
-  const players = await db.select().from(schema.players).where(eq(schema.players.gameId, gameId));
-  for (const p of players) {
-    if (p.isEliminated) continue;
-    await db.update(schema.players)
-      .set({ hasSubmitted: false })
-      .where(eq(schema.players.id, p.id));
-  }
-
-  io?.to(`game:${gameId}`).emit('turn_started', {
-    turnNumber: nextTurn,
-    deadline: game.turnDeadline,
-  });
 }

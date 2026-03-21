@@ -322,11 +322,37 @@ gameRouter.get('/:slug/state', async (req, res) => {
   let latestEventLog: unknown[] = [];
   let latestMovementLog: unknown = null;
   if (prevTurn >= 1) {
-    const [snapshot] = await db.select().from(schema.turnSnapshots)
-      .where(and(
-        eq(schema.turnSnapshots.gameId, game.id),
-        eq(schema.turnSnapshots.turnNumber, prevTurn),
-      ));
+    let snapshot: Record<string, unknown> | undefined;
+    try {
+      const [row] = await db.select().from(schema.turnSnapshots)
+        .where(and(
+          eq(schema.turnSnapshots.gameId, game.id),
+          eq(schema.turnSnapshots.turnNumber, prevTurn),
+        ));
+      snapshot = row as any;
+    } catch (snapshotErr) {
+      // Fallback: movementLog column may not exist yet (schema not pushed)
+      // Query only the known columns
+      console.warn('Snapshot query failed (possibly missing movementLog column), retrying without:', snapshotErr);
+      try {
+        const [row] = await db.select({
+          id: schema.turnSnapshots.id,
+          gameId: schema.turnSnapshots.gameId,
+          turnNumber: schema.turnSnapshots.turnNumber,
+          snapshot: schema.turnSnapshots.snapshot,
+          combatLogs: schema.turnSnapshots.combatLogs,
+          eventLog: schema.turnSnapshots.eventLog,
+          createdAt: schema.turnSnapshots.createdAt,
+        }).from(schema.turnSnapshots)
+          .where(and(
+            eq(schema.turnSnapshots.gameId, game.id),
+            eq(schema.turnSnapshots.turnNumber, prevTurn),
+          ));
+        snapshot = row as any;
+      } catch (innerErr) {
+        console.error('Snapshot query completely failed:', innerErr);
+      }
+    }
     if (snapshot?.combatLogs) {
       // Filter: only show combats where this player was involved
       latestCombatLogs = (snapshot.combatLogs as any[]).filter((log: any) => {

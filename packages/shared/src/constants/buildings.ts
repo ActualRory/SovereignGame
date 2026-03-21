@@ -7,13 +7,25 @@ export interface BuildingDef {
   category: BuildingCategory;
   costTier: CostTier;
   minSettlement: SettlementTier;
+  /** Physical resources required to construct this building (consumed once on build). */
   materials: ResourceType[];
   terrain?: TerrainType[];     // required terrain (extraction buildings)
   techRequired?: TechId;
   usesSlot: boolean;           // watchtowers and bridges don't use a slot
   effect?: string;
-  // Production (for extraction/processing)
-  input?: Partial<Record<ResourceType, number>>;
+  /**
+   * Gold income generated per building per minor turn.
+   * Only processing/extraction buildings that convert resources to wealth have this.
+   * A raw terrain resource without the corresponding building generates no tax wealth.
+   */
+  taxWealth?: number;
+  /**
+   * The territorial resource this building processes.
+   * Owning this resource + this building = full efficiency (1× goldCostPerItem for equipment).
+   * Owning the resource without this building = 2× penalty.
+   */
+  processesResource?: ResourceType;
+  // Food & construction output (physical resources still produced by buildings)
   output?: Partial<Record<ResourceType, number>>;
 }
 
@@ -36,79 +48,133 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   farm: {
     category: 'extraction', costTier: 'basic', minSettlement: 'hamlet',
     materials: ['timber'], terrain: ['plains', 'forest'], usesSlot: true,
-    input: {}, output: { food: 10 },
+    output: { food: 10 },
+    effect: 'Produces food from grain/cattle terrain',
   },
   fishery: {
     category: 'extraction', costTier: 'basic', minSettlement: 'hamlet',
     materials: ['timber'], terrain: ['coast'], usesSlot: true,
-    input: {}, output: { food: 8 },
+    output: { food: 8 },
+    effect: 'Produces food from coastal fish terrain',
   },
+  /**
+   * Sawmill — converts the wood territorial resource to timber (physical stockpile).
+   * Generates tax wealth each turn; a raw forest hex without a sawmill does not.
+   * Without a sawmill, wood-requiring equipment costs 2× gold to produce.
+   */
   sawmill: {
     category: 'extraction', costTier: 'basic', minSettlement: 'hamlet',
     materials: ['timber'], terrain: ['forest'], usesSlot: true,
-    input: { wood: 1 }, output: { timber: 5 },
+    processesResource: 'wood',
+    output: { timber: 5 },
+    taxWealth: 5,
+    effect: 'Processes wood → timber; generates tax wealth; halves production cost for wood-based equipment',
   },
+  /**
+   * Quarry — extracts stone to produce brick (physical building material).
+   * Requires hills/mountains terrain.
+   */
   quarry: {
     category: 'extraction', costTier: 'basic', minSettlement: 'hamlet',
     materials: ['timber'], terrain: ['mountains', 'hills'], usesSlot: true,
-    input: { stone: 1 }, output: { brick: 5 },
+    processesResource: 'stone',
+    output: { brick: 5 },
+    taxWealth: 3,
+    effect: 'Produces brick from stone terrain',
   },
+  /**
+   * Mine — processes iron_ore and gold_ore.
+   * Provides full efficiency for iron-tier weapon/armour production.
+   * Also generates modest tax wealth from mineral extraction.
+   */
   mine: {
     category: 'extraction', costTier: 'standard', minSettlement: 'hamlet',
     materials: ['timber'], terrain: ['mountains', 'hills'], usesSlot: true,
-    input: {}, output: { iron: 3 }, // produces iron from iron_ore, or gold_ingots from gold_ore
+    processesResource: 'iron_ore',
+    taxWealth: 4,
+    effect: 'Processes iron_ore → full efficiency for iron-tier equipment; gold_ore → bonus income',
   },
   stables: {
     category: 'extraction', costTier: 'standard', minSettlement: 'hamlet',
     materials: ['timber'], terrain: ['plains'], usesSlot: true,
-    input: { wild_horses: 1 }, output: { horses: 2 },
+    effect: 'Enables drafting of wild horses from hex mount pool',
   },
   griffin_lodge: {
     category: 'extraction', costTier: 'advanced', minSettlement: 'hamlet',
-    materials: ['timber', 'stone'], terrain: ['mountains'], usesSlot: true,
-    input: { gryphons: 1 }, output: { griffins: 1 },
+    materials: ['timber', 'brick'], terrain: ['mountains'], usesSlot: true,
+    effect: 'Enables drafting of gryphons from hex mount pool',
   },
 
   // ── Processing ──
+  /**
+   * Foundry — unlocks steel-tier weapons and armour (greatsword, plate, breastplate, longsword, sabre).
+   * Also provides full efficiency for steel production from iron_ore.
+   * Requires mine at same settlement for synergy.
+   */
   foundry: {
     category: 'processing', costTier: 'advanced', minSettlement: 'town',
-    materials: ['stone', 'iron'], usesSlot: true,
+    materials: ['stone', 'brick'], usesSlot: true,
     techRequired: 'foundry',
-    input: { iron: 2 }, output: { steel: 1 },
+    processesResource: 'iron_ore',
+    taxWealth: 6,
+    effect: 'Unlocks steel-tier equipment production; full efficiency for steel weapons & armour',
   },
+  /**
+   * Alchemist — processes sulphur for gunpowder-based weapons (musket, rifle, handgun).
+   * Without an alchemist, sulphur-requiring equipment costs 2× gold to produce.
+   */
   alchemist: {
     category: 'processing', costTier: 'advanced', minSettlement: 'town',
     materials: ['stone', 'timber'], usesSlot: true,
     techRequired: 'alchemy',
-    input: { sulphur: 1 }, output: { gunpowder: 2 },
+    processesResource: 'sulphur',
+    taxWealth: 5,
+    effect: 'Processes sulphur → full efficiency for gunpowder-based equipment',
   },
+  /**
+   * Bank — converts gold_ore territorial income to full wealth.
+   * Without a bank, gold_ore hexes generate only 50% of their potential income bonus.
+   */
   bank: {
     category: 'processing', costTier: 'advanced', minSettlement: 'town',
     materials: ['stone', 'brick'], usesSlot: true,
     techRequired: 'banking',
-    input: { gold_ingots: 1 }, output: {}, // converts to gold currency
-    effect: 'Converts Gold Ingots to Gold (gp)',
+    processesResource: 'gold_ore',
+    taxWealth: 15,
+    effect: 'Unlocks full income from gold_ore hexes (50% without bank)',
   },
+  /**
+   * Tailor — processes wool/cotton into uniforms and provides full efficiency
+   * for gambeson production (wool-based armour).
+   */
   tailor: {
     category: 'processing', costTier: 'standard', minSettlement: 'town',
     materials: ['timber'], usesSlot: true,
-    input: { wool: 1 }, output: { uniforms: 2 }, // or cotton
+    processesResource: 'wool',
+    output: { uniforms: 2 },
+    taxWealth: 3,
+    effect: 'Processes wool → uniforms; full efficiency for gambeson production',
   },
+  /**
+   * Tannery — processes cattle into leather for mail armour production.
+   * Without a tannery, cattle-based equipment costs 2× gold to produce.
+   */
   tannery: {
     category: 'processing', costTier: 'basic', minSettlement: 'village',
     materials: ['timber'], usesSlot: true,
-    input: { cattle: 1 }, output: { leather: 3 },
+    processesResource: 'cattle',
+    taxWealth: 2,
+    effect: 'Processes cattle → full efficiency for leather-based equipment (currently: mail)',
   },
   /**
    * Arms Workshop — produces any unlocked weapon (primary or secondary).
-   * Accepts equipment orders; each workshop building = +1 capacity unit per turn.
-   * Contributes to settlement tax wealth whether producing or idle.
-   * The specific weapon produced and its inputs are determined by the active order.
+   * Each building = +80 workshop points per turn toward the active equipment order.
+   * Generates tax wealth whether an order is active or not.
    */
   arms_workshop: {
     category: 'processing', costTier: 'standard', minSettlement: 'village',
     materials: ['stone', 'timber'], usesSlot: true,
-    input: {}, output: {}, // inputs/outputs vary by equipment order
+    taxWealth: 8,
     effect: 'Accepts weapon production orders (primaries & secondaries)',
   },
   /**
@@ -117,8 +183,8 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
    */
   armour_workshop: {
     category: 'processing', costTier: 'advanced', minSettlement: 'town',
-    materials: ['stone', 'iron'], usesSlot: true,
-    input: {}, output: {}, // inputs/outputs vary by equipment order
+    materials: ['stone', 'brick'], usesSlot: true,
+    taxWealth: 8,
     effect: 'Accepts armour production orders',
   },
 
@@ -225,3 +291,23 @@ export const RESEARCH_POINTS: Partial<Record<BuildingType, number>> = {
   college: 10,
   university: 15,
 };
+
+/**
+ * Maps each territorial resource to the processing building that provides full production efficiency.
+ * Owning the resource WITHOUT the corresponding building → 2× gold cost per equipment item.
+ * Owning the resource WITH the building → 1× gold cost.
+ *
+ * Note: steel-tier weapons (greatsword, plate, etc.) use `iron_ore` as their resource but require
+ * the `foundry` building — handled separately because foundry also serves as a tech unlock.
+ */
+export const RESOURCE_EFFICIENCY_BUILDING: Partial<Record<ResourceType, BuildingType>> = {
+  wood:     'sawmill',
+  iron_ore: 'mine',
+  sulphur:  'alchemist',
+  wool:     'tailor',
+  cattle:   'tannery',
+  gold_ore: 'bank',
+};
+
+/** Penalty multiplier on goldCostPerItem when the required processing building is absent. */
+export const RAW_RESOURCE_COST_MULTIPLIER = 2.0;

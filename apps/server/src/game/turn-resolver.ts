@@ -11,7 +11,8 @@ import {
   calculateSettlementProduction, calculateTaxIncome,
   calculateUpkeep, calculateFoodConsumption, getStorageCap,
   calculatePopGrowth, calculateStarvation,
-  BUILDINGS, COST_TIERS, TECH_TREE, SETTLEMENT_TIERS, TERRAIN,
+  BUILDINGS, RESOURCE_EFFICIENCY_BUILDING, RAW_RESOURCE_COST_MULTIPLIER,
+  COST_TIERS, TECH_TREE, SETTLEMENT_TIERS, TERRAIN,
   STABILITY_PER_TURN, RIVER_CROSSING_COST,
   getNextTier, TIER_ORDER,
   hexNeighbors, hexKey, hexDistance, hasRiverBetween,
@@ -1084,7 +1085,6 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
 
     const def = primaryDef ?? sidearmDef ?? armourDef;
     const productionCost: number = def.productionCost;
-    const inputs = def.inputs;
 
     const priority = eqOrder.priority ?? 'standard';
     const throughputMult = PRIORITY_THROUGHPUT[priority] ?? 1.0;
@@ -1096,18 +1096,38 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     const canProduce  = Math.min(remaining, Math.floor(totalPoints / productionCost));
     if (canProduce <= 0) continue;
 
-    // Deduct input materials (scaled by priority cost multiplier)
-    const storage = { ...(settlement.storage as Record<string, number>) };
-    let hasInputs = true;
-    for (const [mat, qty] of Object.entries(inputs)) {
-      const required = Math.ceil((qty ?? 0) * canProduce * inputCostMult);
-      if ((storage[mat] ?? 0) < required) { hasInputs = false; break; }
-    }
-    if (!hasInputs) continue;
+    // Territory access check — player must own hexes with all required resources.
+    // If a required processing building is absent at this settlement, apply 2× gold cost.
+    const ownerPlayer = activePlayers.find(p => p.id === eqOrder.playerId);
+    if (!ownerPlayer) continue;
+    const ownedHexes = await db.select().from(schema.gameHexes)
+      .where(and(eq(schema.gameHexes.gameId, gameId), eq(schema.gameHexes.ownerId, ownerPlayer.id)));
+    const ownedResources = new Set(ownedHexes.flatMap(h => (h.resources as ResourceType[]) ?? []));
 
-    for (const [mat, qty] of Object.entries(inputs)) {
-      storage[mat] = (storage[mat] ?? 0) - Math.ceil((qty ?? 0) * canProduce * inputCostMult);
+    let canAccess = true;
+    let efficiencyMultiplier = 1.0;
+    for (const res of def.requiredResources) {
+      if (!ownedResources.has(res)) { canAccess = false; break; }
+      const effBuilding = RESOURCE_EFFICIENCY_BUILDING[res];
+      if (effBuilding) {
+        const hasBuilding = buildings.some(b => b.type === effBuilding && !b.isConstructing);
+        if (!hasBuilding) efficiencyMultiplier = Math.max(efficiencyMultiplier, RAW_RESOURCE_COST_MULTIPLIER);
+      }
     }
+    if (!canAccess) continue;
+
+    // Deduct gold cost from player treasury
+    const totalGoldCost = Math.ceil(def.goldCostPerItem * canProduce * efficiencyMultiplier * inputCostMult);
+    const playerGold = ownerPlayer.gold ?? 0;
+    if (playerGold < totalGoldCost) continue;
+
+    const newGold = playerGold - totalGoldCost;
+    await db.update(schema.players)
+      .set({ gold: newGold })
+      .where(eq(schema.players.id, ownerPlayer.id));
+    ownerPlayer.gold = newGold; // keep in-memory value current for subsequent orders
+
+    const storage = { ...(settlement.storage as Record<string, number>) };
 
     // Add produced equipment to storage
     const storageCap = getStorageCap(settlement.tier as SettlementTier);

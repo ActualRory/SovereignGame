@@ -26,26 +26,36 @@ export type TerrainType =
   | 'desert';
 
 export type ResourceType =
-  // Food chain
+  // ── Territorial resources (hex properties; never stockpiled) ──
+  // Food terrain
   | 'grain' | 'cattle' | 'fruit' | 'fish'
-  // Construction
+  // Raw construction
   | 'stone' | 'wood'
-  // Military chain (raw)
-  | 'iron_ore' | 'gold_ore' | 'wild_horses' | 'gryphons'
-  | 'sulphur'
-  // Processed — produced by buildings, not found on map
-  | 'food' | 'timber' | 'brick' | 'iron' | 'steel' | 'gold_ingots'
-  | 'gunpowder' | 'leather'
-  // Mounts (in settlement storage; drafted to mount pool separately)
-  | 'horses' | 'griffins' | 'demigryphs'
-  // Primary weapons (produced by Arms Workshop)
-  | 'greataxe' | 'greatsword' | 'polearm' | 'longbow' | 'musket' | 'rifle'
-  // Secondary weapons (produced by Arms Workshop)
-  | 'shortsword' | 'longsword' | 'sabre' | 'handgun'
-  // Armour (produced by Armour Workshop)
-  | 'gambeson' | 'mail' | 'plate' | 'breastplate'
+  // Military / industrial (raw)
+  | 'iron_ore' | 'gold_ore' | 'sulphur'
+  // Mount sources
+  | 'wild_horses' | 'gryphons'
   // Textiles
-  | 'wool' | 'cotton' | 'uniforms';
+  | 'wool' | 'cotton'
+
+  // ── Physical resources (stored in settlements) ──
+  // Construction materials (produced by sawmill / quarry)
+  | 'timber' | 'brick'
+  // Food (produced by farm / fishery, consumed by population)
+  | 'food'
+  // Uniforms (produced by tailor — late-era unit equipment)
+  | 'uniforms'
+
+  // ── Mounts (held in settlement draft pool) ──
+  | 'horses' | 'griffins' | 'demigryphs'
+
+  // ── Equipment (produced by workshops, stored until equipped) ──
+  // Primary weapons
+  | 'greataxe' | 'greatsword' | 'polearm' | 'longbow' | 'musket' | 'rifle'
+  // Secondary weapons
+  | 'shortsword' | 'longsword' | 'sabre' | 'handgun'
+  // Armour
+  | 'gambeson' | 'mail' | 'plate' | 'breastplate';
 
 /**
  * River edges are identified by the direction from this hex to the neighbor.

@@ -73,24 +73,6 @@ export function calculateSettlementProduction(
         if (!hasMatchingResource) continue;
       }
 
-      // Check processing buildings have input available
-      if (def.category === 'processing' && def.input) {
-        let hasInputs = true;
-        for (const [resource, amount] of Object.entries(def.input)) {
-          const available = hexStorage[resource as ResourceType] ?? 0;
-          if (available < (amount ?? 0)) {
-            hasInputs = false;
-            break;
-          }
-        }
-        if (!hasInputs) continue;
-
-        // Record consumed inputs
-        for (const [resource, amount] of Object.entries(def.input)) {
-          consumed[resource as ResourceType] = (consumed[resource as ResourceType] ?? 0) + (amount ?? 0);
-        }
-      }
-
       // Calculate output scaled by population
       for (const [resource, baseAmount] of Object.entries(def.output)) {
         let amount = Math.floor((baseAmount ?? 0) * popScale);

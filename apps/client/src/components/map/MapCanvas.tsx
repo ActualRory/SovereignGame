@@ -136,6 +136,11 @@ export function MapCanvas() {
               // Normal: select hex and auto-select army
               setSelectedHexRef.current(hex);
               autoSelectArmy(hex);
+              // If detail panel is open, update it to show the newly clicked hex
+              const state2 = useStore.getState();
+              if (state2.detailPanelHex) {
+                state2.setDetailPanelHex(hex);
+              }
             }
           }
         }

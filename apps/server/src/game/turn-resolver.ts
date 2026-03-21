@@ -1486,7 +1486,122 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   const movementLog = movementResult.movementLog;
 
   // ══════════════════════════════════════════════
-  // STEP 11: Siege Assault + Capture/Raze
+  // STEP 11a: Siege Progression (multi-turn)
+  // Armies on enemy settlements at war automatically progress the siege.
+  // ══════════════════════════════════════════════
+  const allSettlementsForSiege = await db.select().from(schema.settlements)
+    .where(eq(schema.settlements.gameId, gameId));
+  const latestArmies = await db.select().from(schema.armies)
+    .where(eq(schema.armies.gameId, gameId));
+  const latestRelations = await db.select().from(schema.diplomacyRelations)
+    .where(eq(schema.diplomacyRelations.gameId, gameId));
+
+  // Siege progress rates by settlement tier (progress per turn, out of 100)
+  const SIEGE_RATE: Record<string, number> = {
+    hamlet: 34,    // ~3 turns
+    village: 25,   // 4 turns
+    town: 17,      // ~6 turns
+    city: 10,      // 10 turns
+    metropolis: 6, // ~17 turns
+  };
+
+  for (const settlement of allSettlementsForSiege) {
+    // Find enemy armies on this hex that are at war with the settlement owner
+    const enemyArmiesHere = latestArmies.filter(a =>
+      a.hexQ === settlement.hexQ && a.hexR === settlement.hexR
+      && a.ownerId !== settlement.ownerId
+    );
+
+    // Filter to only armies whose owner is at war with settlement owner
+    const besiegingArmies = enemyArmiesHere.filter(a => {
+      const rel = latestRelations.find(r =>
+        (r.playerAId === a.ownerId && r.playerBId === settlement.ownerId)
+        || (r.playerAId === settlement.ownerId && r.playerBId === a.ownerId)
+      );
+      return rel && rel.relationType === 'war';
+    });
+
+    if (besiegingArmies.length === 0) {
+      // No enemy army — reset siege progress if any
+      if (settlement.siegeProgress && settlement.siegeProgress > 0) {
+        await db.update(schema.settlements)
+          .set({ siegeProgress: null })
+          .where(eq(schema.settlements.id, settlement.id));
+      }
+      continue;
+    }
+
+    // Count total besieging troops
+    const besiegingUnitCounts = await Promise.all(
+      besiegingArmies.map(async a => {
+        const units = await db.select().from(schema.units).where(eq(schema.units.armyId, a.id));
+        return units.filter(u => u.state !== 'destroyed').length;
+      })
+    );
+    const totalBesiegingUnits = besiegingUnitCounts.reduce((s, c) => s + c, 0);
+    if (totalBesiegingUnits === 0) continue;
+
+    // Check if garrison is present
+    const garrisonArmies = latestArmies.filter(a =>
+      a.hexQ === settlement.hexQ && a.hexR === settlement.hexR
+      && a.ownerId === settlement.ownerId
+    );
+    const hasGarrison = garrisonArmies.length > 0;
+
+    // Calculate progress increment
+    const baseRate = SIEGE_RATE[settlement.tier] ?? 20;
+    // Bonus for multiple units: +2 per extra unit (diminishing)
+    const unitBonus = Math.min((totalBesiegingUnits - 1) * 2, 10);
+    // Garrison halves progress
+    const garrisonPenalty = hasGarrison ? 0.5 : 1;
+    const increment = Math.round((baseRate + unitBonus) * garrisonPenalty);
+
+    const currentProgress = settlement.siegeProgress ?? 0;
+    const newProgress = Math.min(currentProgress + increment, 100);
+
+    if (newProgress >= 100) {
+      // Siege complete — auto-capture
+      const besiegerId = besiegingArmies[0].ownerId;
+      const besiegerPlayer = activePlayers.find(p => p.id === besiegerId);
+      const newPop = Math.round(settlement.population * 0.75);
+
+      await db.update(schema.settlements)
+        .set({ ownerId: besiegerId, population: newPop, siegeProgress: null })
+        .where(eq(schema.settlements.id, settlement.id));
+
+      await db.update(schema.gameHexes)
+        .set({ ownerId: besiegerId })
+        .where(and(
+          eq(schema.gameHexes.gameId, gameId),
+          eq(schema.gameHexes.q, settlement.hexQ),
+          eq(schema.gameHexes.r, settlement.hexR),
+        ));
+
+      events.push({
+        type: 'settlement_captured',
+        description: `${besiegerPlayer?.countryName ?? '?'} captured ${settlement.name} after a long siege`,
+        playerIds: [besiegerId, settlement.ownerId],
+      });
+    } else {
+      await db.update(schema.settlements)
+        .set({ siegeProgress: newProgress })
+        .where(eq(schema.settlements.id, settlement.id));
+
+      // Only notify on first tick (siege started)
+      if (currentProgress === 0) {
+        const besiegerId = besiegingArmies[0].ownerId;
+        const besiegerPlayer = activePlayers.find(p => p.id === besiegerId);
+        events.push({
+          type: 'siege_started',
+          description: `${besiegerPlayer?.countryName ?? '?'} is besieging ${settlement.name}`,
+          playerIds: [besiegerId, settlement.ownerId],
+        });
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════
+  // STEP 11b: Siege Assault (optional instant capture attempt)
   // ══════════════════════════════════════════════
   for (const player of activePlayers) {
     const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
@@ -1601,7 +1716,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         // Capture: 25% pop loss, transfer ownership
         const newPop = Math.round(targetSettlement.population * 0.75);
         await db.update(schema.settlements)
-          .set({ ownerId: player.id, population: newPop })
+          .set({ ownerId: player.id, population: newPop, siegeProgress: null })
           .where(eq(schema.settlements.id, targetSettlement.id));
 
         // Transfer hex ownership
@@ -1649,7 +1764,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         // Capture: 25% pop loss, transfer ownership
         const newPop = Math.round(targetSettlement.population * 0.75);
         await db.update(schema.settlements)
-          .set({ ownerId: player.id, population: newPop })
+          .set({ ownerId: player.id, population: newPop, siegeProgress: null })
           .where(eq(schema.settlements.id, targetSettlement.id));
 
         await db.update(schema.gameHexes)

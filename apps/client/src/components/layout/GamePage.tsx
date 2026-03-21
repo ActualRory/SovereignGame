@@ -12,6 +12,8 @@ import { HexDetailPanel } from '../panels/HexDetailPanel.js';
 import { CombatLogPanel } from '../panels/CombatLogPanel.js';
 import { EventLogPanel } from '../panels/EventLogPanel.js';
 import { GameOverOverlay } from '../panels/GameOverOverlay.js';
+import { BattleOverlay } from '../panels/BattleOverlay.js';
+import { SiegePanel } from '../panels/SiegePanel.js';
 
 let notifCounter = 0;
 
@@ -135,6 +137,8 @@ export function GamePage() {
         {!activeTab && <HexDetailPanel />}
         <CombatLogPanel />
         <EventLogPanel />
+        <SiegePanel />
+        <BattleOverlay />
         {game?.status === 'finished' && <GameOverOverlay />}
       </div>
       <BottomBar />

@@ -120,6 +120,8 @@ export const settlements = pgTable('settlements', {
   draftedGryphons: integer('drafted_gryphons').notNull().default(0),
   /** Demigryphs bred from horses + gryphons. */
   draftedDemigryphs: integer('drafted_demigryphs').notNull().default(0),
+  /** Siege progress (0-100). Null = not under siege. */
+  siegeProgress: integer('siege_progress'),
 }, (table) => [
   index('settlements_game_idx').on(table.gameId),
 ]);

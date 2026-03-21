@@ -1032,6 +1032,326 @@ h3, h4, h5, h6 {
   color: var(--text-primary);
 }
 
+/* ─── Battle Overlay (EU4-style) ─── */
+
+.battle-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(30, 25, 18, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 90;
+}
+
+.battle-overlay {
+  background:
+    linear-gradient(135deg, rgba(196, 169, 86, 0.06) 0%, transparent 50%),
+    var(--bg-surface);
+  border: 2px solid var(--border-ornate);
+  border-radius: 10px;
+  padding: 20px 24px;
+  max-width: 700px;
+  width: 95%;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 48px var(--shadow-deep), 0 0 24px var(--glow-gold);
+}
+
+.battle-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  text-align: center;
+  color: var(--accent-gold);
+  margin-bottom: 4px;
+  text-transform: capitalize;
+}
+
+.battle-winner {
+  text-align: center;
+  font-family: var(--font-heading);
+  font-size: 15px;
+  margin-bottom: 16px;
+  padding: 4px 12px;
+  border-radius: 4px;
+}
+.battle-winner.attacker {
+  color: #6dbb6d;
+  background: rgba(106, 154, 88, 0.15);
+}
+.battle-winner.defender {
+  color: #d47c6c;
+  background: rgba(168, 76, 58, 0.15);
+}
+.battle-winner.draw {
+  color: var(--text-muted);
+  background: rgba(100, 100, 100, 0.12);
+}
+
+.battle-columns {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+}
+
+.battle-side {
+  flex: 1;
+  min-width: 0;
+}
+
+.battle-attacker { padding-right: 12px; }
+.battle-defender { padding-left: 12px; }
+
+.battle-side-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.battle-side-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1px solid rgba(0,0,0,0.3);
+  flex-shrink: 0;
+}
+
+.battle-side-name {
+  font-family: var(--font-heading);
+  font-size: 15px;
+}
+
+.battle-side-role {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.battle-modifier {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.battle-troops-summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.battle-troops-label { color: var(--text-muted); font-size: 11px; }
+.battle-arrow { color: var(--text-muted); }
+.battle-loss { color: var(--accent-red); font-weight: bold; }
+.battle-casualties { color: var(--text-muted); font-size: 11px; }
+
+.battle-center {
+  flex: 0 0 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+}
+
+.battle-center-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 12px;
+}
+.battle-center-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+/* Unit rows */
+.battle-unit-list { display: flex; flex-direction: column; gap: 4px; }
+
+.battle-unit {
+  font-size: 12px;
+}
+.battle-unit-destroyed { opacity: 0.6; }
+
+.battle-unit-name {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 1px;
+}
+
+.battle-unit-bar-track {
+  height: 6px;
+  background: var(--bg-inset);
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,0.2);
+}
+
+.battle-unit-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.battle-unit-troops {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.battle-destroyed-tag {
+  color: var(--accent-red);
+  font-weight: bold;
+  font-size: 9px;
+  margin-left: 4px;
+  text-transform: uppercase;
+}
+
+.battle-unit-xp {
+  font-size: 10px;
+  color: var(--accent-gold);
+}
+
+/* Round-by-round */
+.battle-rounds {
+  border-top: 1px solid var(--border-color);
+  padding-top: 8px;
+  margin-bottom: 12px;
+}
+.battle-rounds summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-heading);
+}
+
+.battle-round {
+  margin-top: 6px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border-color);
+}
+.battle-round-header {
+  font-weight: bold;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+.battle-phase {
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+.battle-phase em {
+  color: var(--text-secondary);
+}
+.battle-roll {
+  display: inline-block;
+  background: rgba(0,0,0,0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin: 1px 2px;
+  font-size: 10px;
+}
+.battle-phase-casualties {
+  color: var(--accent-red);
+}
+
+.battle-close {
+  display: block;
+  margin: 0 auto;
+  padding: 6px 24px;
+  background: var(--bg-surface-hover);
+  border: 1px solid var(--border-ornate);
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 14px;
+}
+.battle-close:hover {
+  background: var(--border-color);
+}
+
+/* ─── Siege Panel ─── */
+
+.siege-panel {
+  position: absolute;
+  bottom: calc(var(--tab-height) + 12px);
+  right: 12px;
+  z-index: 15;
+  background: var(--bg-surface);
+  border: 2px solid var(--border-ornate);
+  border-radius: 6px;
+  padding: 12px;
+  max-width: 320px;
+  max-height: 40vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px var(--shadow-deep), 0 0 8px var(--glow-gold);
+}
+
+.siege-panel h3 {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  margin-bottom: 8px;
+  color: var(--accent-red);
+}
+
+.siege-entry {
+  margin-bottom: 10px;
+  padding: 8px;
+  background: rgba(0,0,0,0.12);
+  border-radius: 4px;
+  border-left: 3px solid var(--accent-red);
+}
+
+.siege-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.siege-settlement-name {
+  font-family: var(--font-heading);
+  font-size: 14px;
+}
+
+.siege-tier {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.siege-progress-track {
+  height: 10px;
+  background: var(--bg-inset);
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,0.2);
+  margin: 4px 0;
+}
+
+.siege-progress-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #C05838, var(--accent-red));
+  transition: width 0.4s;
+}
+
+.siege-detail {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+}
+
 /* ─── Stability Band ─── */
 
 .stability-bar {

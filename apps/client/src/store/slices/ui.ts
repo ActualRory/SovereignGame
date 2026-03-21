@@ -23,6 +23,8 @@ export interface UiSlice {
   isAnimatingMovement: boolean;
   /** Set to true when a turn just resolved; cleared after animation plays or is skipped */
   turnJustResolved: boolean;
+  /** Combat log ID to show in the battle overlay (null = closed) */
+  battleViewId: string | null;
   setActiveTab: (tab: TabId | null) => void;
   setSelectedHex: (hex: { q: number; r: number } | null) => void;
   setSelectedArmyId: (id: string | null) => void;
@@ -32,6 +34,7 @@ export interface UiSlice {
   setPanToHex: (hex: { q: number; r: number } | null) => void;
   setIsAnimatingMovement: (v: boolean) => void;
   setTurnJustResolved: (v: boolean) => void;
+  setBattleViewId: (id: string | null) => void;
 }
 
 export const createUiSlice: StateCreator<UiSlice> = (set) => ({
@@ -44,6 +47,7 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   panToHex: null,
   isAnimatingMovement: false,
   turnJustResolved: false,
+  battleViewId: null,
   setActiveTab: (tab) => set((state) => ({
     activeTab: state.activeTab === tab ? null : tab,
   })),
@@ -55,4 +59,5 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   setPanToHex: (hex) => set({ panToHex: hex }),
   setIsAnimatingMovement: (v) => set({ isAnimatingMovement: v }),
   setTurnJustResolved: (v) => set({ turnJustResolved: v }),
+  setBattleViewId: (id) => set({ battleViewId: id }),
 });

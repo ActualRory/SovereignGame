@@ -509,7 +509,10 @@ function applyPostBattlePromotions(unit: CombatUnit): { rookiesPromoted: number;
 // ── Stat derivation helper (used by server before passing to combat engine) ──
 
 import type { UnitTemplate, WeaponDesign } from '../types/military.js';
-import { PRIMARY_WEAPONS, SIDEARM_WEAPONS } from '../constants/weapons.js';
+import type { WeaponType } from '../constants/weapons.js';
+import type { ShieldType } from '../constants/shields.js';
+import { WEAPONS } from '../constants/weapons.js';
+import { SHIELDS } from '../constants/shields.js';
 import { ARMOUR_TYPES } from '../constants/armour.js';
 import { MOUNT_TYPES } from '../constants/mounts.js';
 import { getBaseStats } from '../constants/units.js';
@@ -536,27 +539,44 @@ export function computeUnitStats(
   let fire = base.fire, shock = base.shock, defence = base.defence;
   let morale = base.morale, armour = base.armour, ap = base.ap, hitsOn = base.hitsOn;
 
-  // Primary weapon
+  function applyWeaponBonus(bonus: { fire?: number; shock?: number; defence?: number; morale?: number; ap?: number; armour?: number }, mult: number) {
+    fire   += (bonus.fire   ?? 0) * mult;
+    shock  += (bonus.shock  ?? 0) * mult;
+    defence += (bonus.defence ?? 0) * mult;
+    morale += (bonus.morale ?? 0) * mult;
+    ap     += (bonus.ap     ?? 0) * mult;
+    armour += (bonus.armour ?? 0) * mult;
+  }
+
+  // Primary weapon — 100%
   if (template.primary) {
-    const w = PRIMARY_WEAPONS[template.primary];
-    if (w) {
-      fire += w.statBonus.fire ?? 0;
-      shock += w.statBonus.shock ?? 0;
-      defence += w.statBonus.defence ?? 0;
-      morale += w.statBonus.morale ?? 0;
-      ap += w.statBonus.ap ?? 0;
+    const w = WEAPONS[template.primary as WeaponType];
+    if (w) applyWeaponBonus(w.statBonus, 1);
+    if (template.primaryDesignId) {
+      const d = weaponDesigns.find(d => d.id === template.primaryDesignId && d.status === 'ready');
+      if (d) applyWeaponBonus(d.statModifiers, 1);
     }
   }
 
-  // Sidearm
+  // Secondary hand — 50% (weapon or shield)
+  if (template.secondary) {
+    const w = WEAPONS[template.secondary as WeaponType];
+    const s = w ? null : SHIELDS[template.secondary as ShieldType];
+    if (w) applyWeaponBonus(w.statBonus, 0.5);
+    if (s) applyWeaponBonus(s.statBonus, 0.5);
+    if (template.secondaryDesignId) {
+      const d = weaponDesigns.find(d => d.id === template.secondaryDesignId && d.status === 'ready');
+      if (d) applyWeaponBonus(d.statModifiers, 0.5);
+    }
+  }
+
+  // Sidearm — 25% (1H weapon only)
   if (template.sidearm) {
-    const w = SIDEARM_WEAPONS[template.sidearm];
-    if (w) {
-      fire += w.statBonus.fire ?? 0;
-      shock += w.statBonus.shock ?? 0;
-      defence += w.statBonus.defence ?? 0;
-      morale += w.statBonus.morale ?? 0;
-      ap += w.statBonus.ap ?? 0;
+    const w = WEAPONS[template.sidearm as WeaponType];
+    if (w) applyWeaponBonus(w.statBonus, 0.25);
+    if (template.sidearmDesignId) {
+      const d = weaponDesigns.find(d => d.id === template.sidearmDesignId && d.status === 'ready');
+      if (d) applyWeaponBonus(d.statModifiers, 0.25);
     }
   }
 
@@ -574,30 +594,25 @@ export function computeUnitStats(
   if (template.mount) {
     const m = MOUNT_TYPES[template.mount];
     if (m) {
-      fire += m.statBonus.fire ?? 0;
-      shock += m.statBonus.shock ?? 0;
+      fire   += m.statBonus.fire   ?? 0;
+      shock  += m.statBonus.shock  ?? 0;
       defence += m.statBonus.defence ?? 0;
       morale += m.statBonus.morale ?? 0;
       armour += m.statBonus.armour ?? 0;
-      ap += m.statBonus.ap ?? 0;
-      hitsOn -= m.statBonus.hitsOnBonus ?? 0; // mount makes unit harder to hit
+      ap     += m.statBonus.ap     ?? 0;
+      hitsOn -= m.statBonus.hitsOnBonus ?? 0;
     }
   }
 
-  // Weapon design modifiers
-  if (template.weaponDesignId) {
-    const design = weaponDesigns.find(d => d.id === template.weaponDesignId && d.status === 'ready');
-    if (design) {
-      fire += design.statModifiers.fire ?? 0;
-      shock += design.statModifiers.shock ?? 0;
-      defence += design.statModifiers.defence ?? 0;
-      morale += design.statModifiers.morale ?? 0;
-      armour += design.statModifiers.armour ?? 0;
-      ap += design.statModifiers.ap ?? 0;
-    }
-  }
-
-  return { fire: Math.max(0, fire), shock: Math.max(0, shock), defence: Math.max(0, defence), morale: Math.max(1, morale), armour: Math.max(0, armour), ap: Math.max(0, ap), hitsOn: Math.max(1, hitsOn) };
+  return {
+    fire:    Math.max(0, Math.round(fire)),
+    shock:   Math.max(0, Math.round(shock)),
+    defence: Math.max(0, Math.round(defence)),
+    morale:  Math.max(1, Math.round(morale)),
+    armour:  Math.max(0, Math.round(armour)),
+    ap:      Math.max(0, Math.round(ap)),
+    hitsOn:  Math.max(1, Math.round(hitsOn)),
+  };
 }
 
 // ── Naval combat ──

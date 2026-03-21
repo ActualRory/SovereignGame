@@ -5,7 +5,8 @@ import type { TaxRate } from './economy.js';
 import type { TechId } from './tech.js';
 import type { BuildingType } from './building.js';
 import type { ShipType, UnitPosition } from './military.js';
-import type { PrimaryWeapon, SidearmWeapon } from '../constants/weapons.js';
+import type { WeaponType } from '../constants/weapons.js';
+import type { ShieldType } from '../constants/shields.js';
 import type { ArmourType } from '../constants/armour.js';
 import type { MountType } from '../constants/mounts.js';
 
@@ -86,11 +87,14 @@ export interface CreateUnitTemplateOrder {
   isIrregular: boolean;
   isMounted: boolean;
   companiesOrSquadrons: 1 | 2 | 3 | 4 | 5;
-  primary: PrimaryWeapon | null;
-  sidearm: SidearmWeapon | null;
+  primary: WeaponType | null;
+  secondary: WeaponType | ShieldType | null;
+  sidearm: WeaponType | null;
   armour: ArmourType | null;
   mount: MountType | null;
-  weaponDesignId: string | null;
+  primaryDesignId: string | null;
+  secondaryDesignId: string | null;
+  sidearmDesignId: string | null;
 }
 
 export interface UpdateUnitTemplateOrder {
@@ -105,13 +109,12 @@ export interface DeleteUnitTemplateOrder {
 // ── Weapon Designs ──
 
 export interface CreateWeaponDesignOrder {
-  baseWeapon: PrimaryWeapon | SidearmWeapon;
+  baseWeapon: WeaponType | ShieldType;
   name: string;
   statModifiers: Partial<{
     fire: number; shock: number; defence: number;
     morale: number; ap: number; armour: number;
   }>;
-  costModifier: number;
 }
 
 export interface RetireWeaponDesignOrder {
@@ -190,6 +193,8 @@ export interface PlaceEquipmentOrder {
   equipmentType: ResourceType;
   quantity: number;
   priority: EquipmentOrderPriority;
+  /** Optional weapon design variant being produced. Display/tracking only — base type goes to storage. */
+  designId?: string;
 }
 
 export interface CancelEquipmentOrderOrder {

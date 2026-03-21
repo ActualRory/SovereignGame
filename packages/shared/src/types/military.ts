@@ -1,7 +1,8 @@
 // ─── Military ───
 
 import type { HexCoord } from './map.js';
-import type { PrimaryWeapon, SidearmWeapon } from '../constants/weapons.js';
+import type { WeaponType } from '../constants/weapons.js';
+import type { ShieldType } from '../constants/shields.js';
 import type { ArmourType } from '../constants/armour.js';
 import type { MountType, MountBreed } from '../constants/mounts.js';
 
@@ -19,16 +20,30 @@ export interface UnitTemplate {
   isMounted: boolean;
   /** 1-5 companies (infantry) or 1-5 squadrons (mounted). */
   companiesOrSquadrons: 1 | 2 | 3 | 4 | 5;
-  /** Primary weapon equipped. Null for irregulars. */
-  primary: PrimaryWeapon | null;
-  /** Optional sidearm. */
-  sidearm: SidearmWeapon | null;
+  /** Primary weapon (full stats). Null for irregulars. */
+  primary: WeaponType | null;
+  /**
+   * Secondary hand item (50% stat contribution).
+   * Can be a 1H/versatile weapon or a shield.
+   * Must be null if primary is 2H.
+   */
+  secondary: WeaponType | ShieldType | null;
+  /**
+   * Sidearm slot (25% stat contribution).
+   * Must be a 1H weapon. Cannot be a shield.
+   * Always available regardless of primary handedness.
+   */
+  sidearm: WeaponType | null;
   /** Optional armour. */
   armour: ArmourType | null;
   /** Optional mount type. Only valid when isMounted = true. */
   mount: MountType | null;
-  /** Active weapon variant design for the primary weapon. Null = base weapon stats. */
-  weaponDesignId: string | null;
+  /** Active weapon design for the primary slot. */
+  primaryDesignId: string | null;
+  /** Active weapon/shield design for the secondary slot. */
+  secondaryDesignId: string | null;
+  /** Active weapon design for the sidearm slot. */
+  sidearmDesignId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,8 +63,8 @@ export interface WeaponDesign {
   id: string;
   gameId: string;
   playerId: string;
-  /** The base weapon this design modifies. */
-  baseWeapon: PrimaryWeapon | SidearmWeapon;
+  /** The base weapon or shield this design modifies. */
+  baseWeapon: WeaponType | ShieldType;
   /** Player-chosen name, e.g. "Light Rifle" or "Heavy Crossbow". */
   name: string;
   /** Stat modifications applied on top of the base weapon's stats. Values sum to zero. */
@@ -85,7 +100,8 @@ export interface TroopCounts {
 /** Equipment held by a unit (not in settlement storage). Returned on disband; capturable on defeat. */
 export interface HeldEquipment {
   primary: number;    // quantity of primary weapon items
-  sidearm: number;    // quantity of sidearm items
+  secondary: number;  // quantity of secondary hand items (weapon or shield)
+  sidearm: number;    // quantity of sidearm items (25% slot)
   armour: number;     // quantity of armour items
   mounts: number;     // quantity of mount animals
 }

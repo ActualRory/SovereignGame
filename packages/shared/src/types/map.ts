@@ -50,11 +50,13 @@ export type ResourceType =
   | 'horses' | 'griffins' | 'demigryphs'
 
   // ── Equipment (produced by workshops, stored until equipped) ──
-  // Primary weapons
-  | 'greataxe' | 'greatsword' | 'polearm' | 'longbow' | 'musket' | 'rifle'
-  // Secondary weapons
-  | 'shortsword' | 'longsword' | 'sabre' | 'handgun'
-  // Armour
+  // Weapons (Arms Workshop)
+  | 'dagger' | 'shortsword' | 'sabre' | 'handgun'        // 1H
+  | 'longsword' | 'spear'                                 // Versatile
+  | 'great_weapon' | 'polearm' | 'longbow' | 'musket' | 'rifle'  // 2H
+  // Shields (Arms Workshop)
+  | 'buckler' | 'round_shield' | 'kite_shield' | 'tower_shield'
+  // Armour (Armour Workshop)
   | 'gambeson' | 'mail' | 'plate' | 'breastplate';
 
 /**

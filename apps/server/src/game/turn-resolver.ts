@@ -21,15 +21,15 @@ import {
   calculateStabilityTurn, resolveWinterRoll, WINTER_ROLL_BONUS,
   getStabilityBand,
   getBaseStats, getDefaultPosition, MEN_PER_COMPANY, MEN_PER_SQUADRON,
-  WEAPON_DESIGN_COST, WEAPON_DESIGN_DEVELOP_TURNS,
-  PRIMARY_WEAPONS, SIDEARM_WEAPONS, ARMOUR_TYPES, WORKSHOP_POINTS_PER_TURN,
+  WEAPON_DESIGN_DEVELOP_TURNS,
+  WEAPONS, SHIELDS, ARMOUR_TYPES, WORKSHOP_POINTS_PER_TURN,
   computeUnitStats,
   type CombatInput, type ArmySide, type CombatUnitInput, type CombatResult,
   type TurnOrders, emptyOrders,
   type TaxRate, type BuildingType, type ResourceType, type SettlementTier,
   type TerrainType, type UnitState, type UnitPosition,
   type HexDirection, type Season, type StabilityEventType,
-  type PrimaryWeapon, type SidearmWeapon, type ArmourType, type MountType,
+  type WeaponType, type ShieldType, type ArmourType, type MountType,
   type UnitTemplate, type WeaponDesign, type TroopCounts,
 } from '@kingdoms/shared';
 
@@ -518,10 +518,13 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         isMounted: tmplOrder.isMounted,
         companiesOrSquadrons: tmplOrder.companiesOrSquadrons,
         primary: tmplOrder.primary ?? null,
+        secondary: tmplOrder.secondary ?? null,
         sidearm: tmplOrder.sidearm ?? null,
         armour: tmplOrder.armour ?? null,
         mount: tmplOrder.mount ?? null,
-        weaponDesignId: tmplOrder.weaponDesignId ?? null,
+        primaryDesignId: tmplOrder.primaryDesignId ?? null,
+        secondaryDesignId: tmplOrder.secondaryDesignId ?? null,
+        sidearmDesignId: tmplOrder.sidearmDesignId ?? null,
       });
     }
 
@@ -563,10 +566,18 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     // ── Create weapon designs (costs gold, enters developing phase) ──
     for (const designOrder of (orders.createWeaponDesigns ?? [])) {
       const playerRow = updatedPlayers.find(p => p.id === player.id);
-      if (!playerRow || playerRow.gold < WEAPON_DESIGN_COST) continue;
+      if (!playerRow) continue;
+
+      // Recalculate design cost server-side
+      const baseDef = WEAPONS[designOrder.baseWeapon as WeaponType] ?? SHIELDS[designOrder.baseWeapon as ShieldType];
+      const productionCost = baseDef?.productionCost ?? 2;
+      const budgetUsed = Object.values(designOrder.statModifiers ?? {}).reduce((s, v) => s + Math.max(0, v ?? 0), 0);
+      const designCost = Math.round(productionCost * 50 + budgetUsed * 75);
+
+      if (playerRow.gold < designCost) continue;
 
       await db.update(schema.players)
-        .set({ gold: playerRow.gold - WEAPON_DESIGN_COST })
+        .set({ gold: playerRow.gold - designCost })
         .where(eq(schema.players.id, player.id));
 
       await db.insert(schema.weaponDesigns).values({
@@ -575,7 +586,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         baseWeapon: designOrder.baseWeapon,
         name: designOrder.name,
         statModifiers: designOrder.statModifiers as Record<string, number>,
-        costModifier: Math.round((designOrder.costModifier ?? 0) * 100), // store as int ×100
+        costModifier: 0,
         status: 'developing',
         turnsRemaining: WEAPON_DESIGN_DEVELOP_TURNS,
       });
@@ -767,7 +778,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       if (!hasBarracks) continue;
 
       const storage = { ...(settlement.storage as Record<string, number>) };
-      const heldEquipment = { primary: 0, sidearm: 0, armour: 0, mounts: 0 };
+      const heldEquipment = { primary: 0, secondary: 0, sidearm: 0, armour: 0, mounts: 0 };
 
       if (!template.isIrregular) {
         // Check and transfer primary weapon
@@ -776,6 +787,13 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
           if ((storage[weaponKey] ?? 0) < troops) continue;
           storage[weaponKey] = (storage[weaponKey] ?? 0) - troops;
           heldEquipment.primary = troops;
+        }
+        // Check and transfer secondary (weapon or shield)
+        if (template.secondary) {
+          const secondaryKey = template.secondary as string;
+          if ((storage[secondaryKey] ?? 0) < troops) continue;
+          storage[secondaryKey] = (storage[secondaryKey] ?? 0) - troops;
+          heldEquipment.secondary = troops;
         }
         // Check and transfer sidearm
         if (template.sidearm) {
@@ -822,7 +840,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         .where(eq(schema.players.id, player.id));
 
       // Determine default position and get hex for mount breed
-      const defaultPos = getDefaultPosition(template.isMounted, template.primary as PrimaryWeapon | null);
+      const defaultPos = getDefaultPosition(template.isMounted, template.primary as WeaponType | null);
 
       const [hex] = await db.select().from(schema.gameHexes)
         .where(and(
@@ -882,10 +900,13 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
 
         const storage = { ...(nearestSettlement.storage as Record<string, number>) };
         const storageCap = getStorageCap(nearestSettlement.tier as SettlementTier);
-        const held = unit.heldEquipment as { primary: number; sidearm: number; armour: number; mounts: number };
+        const held = unit.heldEquipment as { primary: number; secondary: number; sidearm: number; armour: number; mounts: number };
 
         if (tmpl?.primary && held.primary > 0) {
           storage[tmpl.primary] = Math.min(storageCap, (storage[tmpl.primary] ?? 0) + held.primary);
+        }
+        if (tmpl?.secondary && held.secondary > 0) {
+          storage[tmpl.secondary] = Math.min(storageCap, (storage[tmpl.secondary] ?? 0) + held.secondary);
         }
         if (tmpl?.sidearm && held.sidearm > 0) {
           storage[tmpl.sidearm] = Math.min(storageCap, (storage[tmpl.sidearm] ?? 0) + held.sidearm);
@@ -933,7 +954,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         .where(eq(schema.unitTemplates.id, unit.templateId));
       if (!tmpl) continue;
 
-      const held = unit.heldEquipment as { primary: number; sidearm: number; armour: number; mounts: number };
+      const held = unit.heldEquipment as { primary: number; secondary: number; sidearm: number; armour: number; mounts: number };
       const troops = (unit.troopCounts as { rookie: number; capable: number; veteran: number });
       const total = troops.rookie + troops.capable + troops.veteran;
 
@@ -942,15 +963,23 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
 
       // Return old equipment to storage, then pull new equipment
       // (Simplified: swap all held equipment for the template's current spec)
-      const oldPrimary = held.primary;
-      if (tmpl.primary && oldPrimary > 0) {
-        storage[tmpl.primary] = Math.min(storageCap, (storage[tmpl.primary] ?? 0) + oldPrimary);
+      if (tmpl.primary && held.primary > 0) {
+        storage[tmpl.primary] = Math.min(storageCap, (storage[tmpl.primary] ?? 0) + held.primary);
+      }
+      if (tmpl.secondary && (held.secondary ?? 0) > 0) {
+        storage[tmpl.secondary] = Math.min(storageCap, (storage[tmpl.secondary] ?? 0) + held.secondary);
       }
       // Pull new equipment for current troops count
       if (tmpl.primary) {
         if ((storage[tmpl.primary] ?? 0) < total) continue;
         storage[tmpl.primary] = (storage[tmpl.primary] ?? 0) - total;
         held.primary = total;
+      }
+      if (tmpl.secondary) {
+        const available = storage[tmpl.secondary] ?? 0;
+        const toTake = Math.min(available, total);
+        storage[tmpl.secondary] = available - toTake;
+        held.secondary = toTake;
       }
 
       await db.update(schema.settlements)
@@ -992,11 +1021,12 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       if (settlement.draftedRecruits < casualties) continue;
 
       const storage = { ...(settlement.storage as Record<string, number>) };
-      const held = { ...(unit.heldEquipment as { primary: number; sidearm: number; armour: number; mounts: number }) };
+      const held = { ...(unit.heldEquipment as { primary: number; secondary: number; sidearm: number; armour: number; mounts: number }) };
 
       if (!tmpl.isIrregular) {
         if (tmpl.primary && (storage[tmpl.primary] ?? 0) < casualties) continue;
         if (tmpl.primary) { storage[tmpl.primary] = (storage[tmpl.primary] ?? 0) - casualties; held.primary += casualties; }
+        if (tmpl.secondary) { const secAvail = storage[tmpl.secondary] ?? 0; const secTake = Math.min(secAvail, casualties); storage[tmpl.secondary] = secAvail - secTake; held.secondary = (held.secondary ?? 0) + secTake; }
         if (tmpl.sidearm) { storage[tmpl.sidearm] = (storage[tmpl.sidearm] ?? 0) - casualties; held.sidearm += casualties; }
         if (tmpl.armour) { storage[tmpl.armour] = (storage[tmpl.armour] ?? 0) - casualties; held.armour += casualties; }
       }
@@ -1036,6 +1066,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         settlementId: eqOrder.settlementId,
         playerId: player.id,
         equipmentType: eqOrder.equipmentType,
+        designId: eqOrder.designId ?? null,
         quantityOrdered: eqOrder.quantity,
         quantityFulfilled: 0,
         status: 'active',
@@ -1074,16 +1105,16 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       .where(eq(schema.buildings.settlementId, settlement.id));
 
     // Determine workshop type and base definition
-    const primaryDef   = PRIMARY_WEAPONS[eqOrder.equipmentType as PrimaryWeapon];
-    const sidearmDef   = SIDEARM_WEAPONS[eqOrder.equipmentType as SidearmWeapon];
-    const armourDef    = ARMOUR_TYPES[eqOrder.equipmentType as ArmourType];
-    const workshopType = (primaryDef || sidearmDef) ? 'arms_workshop' : armourDef ? 'armour_workshop' : null;
+    const weaponDef = WEAPONS[eqOrder.equipmentType as WeaponType];
+    const shieldDef = SHIELDS[eqOrder.equipmentType as ShieldType];
+    const armourDef = ARMOUR_TYPES[eqOrder.equipmentType as ArmourType];
+    const workshopType = (weaponDef || shieldDef) ? 'arms_workshop' : armourDef ? 'armour_workshop' : null;
     if (!workshopType) continue;
 
     const workshopCount = buildings.filter(b => b.type === workshopType && !b.isConstructing).length;
     if (workshopCount === 0) continue;
 
-    const def = primaryDef ?? sidearmDef ?? armourDef;
+    const def = weaponDef ?? shieldDef ?? armourDef;
     const productionCost: number = def.productionCost;
 
     const priority = eqOrder.priority ?? 'standard';

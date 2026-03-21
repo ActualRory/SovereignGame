@@ -156,10 +156,13 @@ gameRouter.post('/:slug/start', async (req, res) => {
       isMounted: false,
       companiesOrSquadrons: 3,
       primary: null,
+      secondary: null,
       sidearm: null,
       armour: null,
       mount: null,
-      weaponDesignId: null,
+      primaryDesignId: null,
+      secondaryDesignId: null,
+      sidearmDesignId: null,
     }).returning();
 
     // Create starting units using the new template system

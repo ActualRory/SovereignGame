@@ -107,7 +107,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
 
   // ── Processing ──
   /**
-   * Foundry — unlocks steel-tier weapons and armour (greatsword, plate, breastplate, longsword, sabre).
+   * Foundry — unlocks steel-tier weapons and armour (plate, breastplate, longsword, sabre).
    * Also provides full efficiency for steel production from iron_ore.
    * Requires mine at same settlement for synergy.
    */
@@ -297,7 +297,7 @@ export const RESEARCH_POINTS: Partial<Record<BuildingType, number>> = {
  * Owning the resource WITHOUT the corresponding building → 2× gold cost per equipment item.
  * Owning the resource WITH the building → 1× gold cost.
  *
- * Note: steel-tier weapons (greatsword, plate, etc.) use `iron_ore` as their resource but require
+ * Note: steel-tier weapons (plate, etc.) use `iron_ore` as their resource but require
  * the `foundry` building — handled separately because foundry also serves as a tech unlock.
  */
 export const RESOURCE_EFFICIENCY_BUILDING: Partial<Record<ResourceType, BuildingType>> = {

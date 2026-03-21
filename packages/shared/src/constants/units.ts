@@ -10,8 +10,8 @@
 // This file defines the base stats (before equipment) and supporting constants.
 
 import type { UnitPosition } from '../types/military.js';
-import type { PrimaryWeapon } from './weapons.js';
-import { RANGED_PRIMARIES } from './weapons.js';
+import type { WeaponType } from './weapons.js';
+import { RANGED_WEAPONS } from './weapons.js';
 
 export interface BaseCombatStats {
   fire: number;
@@ -40,10 +40,10 @@ export const MEN_PER_SQUADRON = 50;
  */
 export function getDefaultPosition(
   isMounted: boolean,
-  primary: PrimaryWeapon | null,
+  primary: WeaponType | null,
 ): UnitPosition {
   if (isMounted) return 'flank';
-  if (primary !== null && RANGED_PRIMARIES.has(primary)) return 'backline';
+  if (primary !== null && RANGED_WEAPONS.has(primary)) return 'backline';
   return 'frontline';
 }
 
@@ -55,7 +55,7 @@ export function getBaseStats(
   companiesOrSquadrons: 1 | 2 | 3 | 4 | 5,
   isMounted: boolean,
   isIrregular: boolean,
-  primary: PrimaryWeapon | null,
+  primary: WeaponType | null,
 ): BaseCombatStats {
   const position = getDefaultPosition(isMounted, primary);
   const maxTroops = isMounted

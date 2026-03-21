@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { HexCoord, PrimaryWeapon, SidearmWeapon, ArmourType, MountType } from '@kingdoms/shared';
+import type { HexCoord, WeaponType, ShieldType, ArmourType, MountType } from '@kingdoms/shared';
 
 export interface TradeProposalOrder {
   recipientId: string;
@@ -13,10 +13,14 @@ export interface CreateTemplateOrder {
   isIrregular: boolean;
   isMounted: boolean;
   companiesOrSquadrons: 1 | 2 | 3 | 4 | 5;
-  primary: PrimaryWeapon | null;
-  sidearm: SidearmWeapon | null;
+  primary: WeaponType | null;
+  secondary: WeaponType | ShieldType | null;
+  sidearm: WeaponType | null;
   armour: ArmourType | null;
   mount: MountType | null;
+  primaryDesignId: string | null;
+  secondaryDesignId: string | null;
+  sidearmDesignId: string | null;
 }
 
 export interface UpdateTemplateOrder {
@@ -34,13 +38,17 @@ export interface PlaceEquipmentOrderOrder {
   settlementId: string;
   equipmentType: string;
   quantity: number;
+  /** Optional weapon design variant. Display/tracking only. */
+  designId?: string;
+  /** Design name for display. */
+  designName?: string;
 }
 
 export interface CreateWeaponDesignOrder {
-  baseWeapon: PrimaryWeapon | SidearmWeapon;
+  baseWeapon: WeaponType | ShieldType;
   name: string;
   statModifiers: Partial<{ fire: number; shock: number; defence: number; morale: number; ap: number; armour: number }>;
-  costModifier: number;
+  goldCost?: number;
 }
 
 export interface DraftOrder {

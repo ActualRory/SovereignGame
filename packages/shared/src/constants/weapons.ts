@@ -3,12 +3,27 @@
 import type { TechId } from '../types/tech.js';
 import type { ResourceType } from '../types/map.js';
 
-export type PrimaryWeapon = 'greataxe' | 'greatsword' | 'polearm' | 'longbow' | 'musket' | 'rifle';
-export type SidearmWeapon = 'shortsword' | 'longsword' | 'sabre' | 'handgun';
-export type AnyWeapon = PrimaryWeapon | SidearmWeapon;
+export type Handedness = '1h' | '2h' | 'versatile';
 
-/** Ranged primaries — units equipped with these default to backline position. */
-export const RANGED_PRIMARIES: ReadonlySet<PrimaryWeapon> = new Set(['longbow', 'musket', 'rifle']);
+export type WeaponType =
+  // 1H
+  | 'dagger' | 'shortsword' | 'sabre' | 'handgun'
+  // Versatile (1H or 2H)
+  | 'longsword' | 'spear'
+  // 2H
+  | 'great_weapon' | 'polearm' | 'longbow' | 'musket' | 'rifle';
+
+/** @deprecated Use WeaponType */
+export type PrimaryWeapon = 'great_weapon' | 'polearm' | 'longbow' | 'musket' | 'rifle';
+/** @deprecated Use WeaponType */
+export type SidearmWeapon = 'shortsword' | 'longsword' | 'sabre' | 'handgun';
+/** @deprecated Use WeaponType */
+export type AnyWeapon = WeaponType;
+
+/** Ranged weapons — units with these as primary default to backline. */
+export const RANGED_WEAPONS: ReadonlySet<WeaponType> = new Set(['longbow', 'musket', 'rifle']);
+/** @deprecated Use RANGED_WEAPONS */
+export const RANGED_PRIMARIES = RANGED_WEAPONS;
 
 export interface WeaponStatBonus {
   fire?: number;
@@ -23,89 +38,38 @@ export const WORKSHOP_POINTS_PER_TURN = 80;
 
 export interface WeaponDef {
   name: string;
+  handedness: Handedness;
   statBonus: WeaponStatBonus;
   /**
-   * Territorial resources the player must own (via claimed hexes) to place production orders.
+   * Territorial resources the player must own to place production orders.
    * Owning the resource without the corresponding processing building incurs a 2× gold cost penalty.
    */
   requiredResources: ResourceType[];
   /** Tech required to unlock production. null = available from start. */
   techRequired: TechId | null;
-  /** Max stat points that can be shifted via weapon design (total pool for variants). */
+  /** Max stat points that can be shifted via weapon design. */
   designBudget: number;
-  /**
-   * Production cost in workshop-points per item.
-   * items/workshop/turn = floor(WORKSHOP_POINTS_PER_TURN / productionCost)
-   * Modified by weapon design costModifier and order priority.
-   */
+  /** Production cost in workshop-points per item. */
   productionCost: number;
-  /**
-   * Gold deducted from the player's treasury per item produced (at full efficiency).
-   * Without the required processing building(s) this is doubled.
-   */
+  /** Gold deducted per item produced at full efficiency. */
   goldCostPerItem: number;
 }
 
-export const PRIMARY_WEAPONS: Record<PrimaryWeapon, WeaponDef> = {
-  greataxe: {
-    name: 'Greataxe',
-    statBonus: { shock: 5, ap: 1 },
+export const WEAPONS: Record<WeaponType, WeaponDef> = {
+  // ── 1H ──
+  dagger: {
+    name: 'Dagger',
+    handedness: '1h',
+    statBonus: { shock: 1 },
     requiredResources: ['iron_ore'],
     techRequired: null,
-    designBudget: 3,
-    productionCost: 2,
-    goldCostPerItem: 3,
+    designBudget: 1,
+    productionCost: 1,
+    goldCostPerItem: 1,
   },
-  greatsword: {
-    name: 'Greatsword',
-    statBonus: { shock: 4, defence: 1, ap: 2 },
-    requiredResources: ['iron_ore'],
-    techRequired: 'foundry',
-    designBudget: 3,
-    productionCost: 3,
-    goldCostPerItem: 5,
-  },
-  polearm: {
-    name: 'Polearm',
-    statBonus: { shock: 3, defence: 3 },
-    requiredResources: ['iron_ore', 'wood'],
-    techRequired: null,
-    designBudget: 3,
-    productionCost: 2,
-    goldCostPerItem: 3,
-  },
-  longbow: {
-    name: 'Longbow',
-    statBonus: { fire: 6, ap: 1 },
-    requiredResources: ['wood'],
-    techRequired: null,
-    designBudget: 3,
-    productionCost: 2,
-    goldCostPerItem: 2,
-  },
-  musket: {
-    name: 'Musket',
-    statBonus: { fire: 7, ap: 3 },
-    requiredResources: ['iron_ore', 'sulphur'],
-    techRequired: 'alchemy',
-    designBudget: 4,
-    productionCost: 5,
-    goldCostPerItem: 8,
-  },
-  rifle: {
-    name: 'Rifle',
-    statBonus: { fire: 9, ap: 5 },
-    requiredResources: ['iron_ore', 'sulphur'],
-    techRequired: 'firearms',
-    designBudget: 4,
-    productionCost: 10,
-    goldCostPerItem: 15,
-  },
-};
-
-export const SIDEARM_WEAPONS: Record<SidearmWeapon, WeaponDef> = {
   shortsword: {
     name: 'Shortsword',
+    handedness: '1h',
     statBonus: { shock: 2 },
     requiredResources: ['iron_ore'],
     techRequired: null,
@@ -113,17 +77,9 @@ export const SIDEARM_WEAPONS: Record<SidearmWeapon, WeaponDef> = {
     productionCost: 2,
     goldCostPerItem: 2,
   },
-  longsword: {
-    name: 'Longsword',
-    statBonus: { shock: 3 },
-    requiredResources: ['iron_ore'],
-    techRequired: 'foundry',
-    designBudget: 2,
-    productionCost: 3,
-    goldCostPerItem: 4,
-  },
   sabre: {
     name: 'Sabre',
+    handedness: '1h',
     statBonus: { shock: 2, fire: 1 },
     requiredResources: ['iron_ore'],
     techRequired: 'foundry',
@@ -133,6 +89,7 @@ export const SIDEARM_WEAPONS: Record<SidearmWeapon, WeaponDef> = {
   },
   handgun: {
     name: 'Handgun',
+    handedness: '1h',
     statBonus: { fire: 3, ap: 2 },
     requiredResources: ['iron_ore', 'sulphur'],
     techRequired: 'firearms',
@@ -140,4 +97,104 @@ export const SIDEARM_WEAPONS: Record<SidearmWeapon, WeaponDef> = {
     productionCost: 5,
     goldCostPerItem: 5,
   },
+
+  // ── Versatile ──
+  longsword: {
+    name: 'Longsword',
+    handedness: 'versatile',
+    statBonus: { shock: 3 },
+    requiredResources: ['iron_ore'],
+    techRequired: 'foundry',
+    designBudget: 2,
+    productionCost: 3,
+    goldCostPerItem: 4,
+  },
+  spear: {
+    name: 'Spear',
+    handedness: 'versatile',
+    statBonus: { shock: 2, defence: 2 },
+    requiredResources: ['wood', 'iron_ore'],
+    techRequired: null,
+    designBudget: 3,
+    productionCost: 2,
+    goldCostPerItem: 3,
+  },
+
+  // ── 2H ──
+  great_weapon: {
+    name: 'Great Weapon',
+    handedness: '2h',
+    statBonus: { shock: 5, ap: 1 },
+    requiredResources: ['iron_ore'],
+    techRequired: null,
+    designBudget: 3,
+    productionCost: 2,
+    goldCostPerItem: 3,
+  },
+  polearm: {
+    name: 'Polearm',
+    handedness: '2h',
+    statBonus: { shock: 3, defence: 3 },
+    requiredResources: ['iron_ore', 'wood'],
+    techRequired: null,
+    designBudget: 3,
+    productionCost: 2,
+    goldCostPerItem: 3,
+  },
+  longbow: {
+    name: 'Longbow',
+    handedness: '2h',
+    statBonus: { fire: 6, ap: 1 },
+    requiredResources: ['wood'],
+    techRequired: null,
+    designBudget: 3,
+    productionCost: 2,
+    goldCostPerItem: 2,
+  },
+  musket: {
+    name: 'Musket',
+    handedness: '2h',
+    statBonus: { fire: 7, ap: 3 },
+    requiredResources: ['iron_ore', 'sulphur'],
+    techRequired: 'alchemy',
+    designBudget: 4,
+    productionCost: 5,
+    goldCostPerItem: 8,
+  },
+  rifle: {
+    name: 'Rifle',
+    handedness: '2h',
+    statBonus: { fire: 9, ap: 5 },
+    requiredResources: ['iron_ore', 'sulphur'],
+    techRequired: 'firearms',
+    designBudget: 4,
+    productionCost: 10,
+    goldCostPerItem: 15,
+  },
 };
+
+/** Legacy split constants for backward compat. Prefer WEAPONS. */
+export const PRIMARY_WEAPONS = Object.fromEntries(
+  (['great_weapon', 'polearm', 'longbow', 'musket', 'rifle'] as PrimaryWeapon[]).map(k => [k, WEAPONS[k]])
+) as Record<PrimaryWeapon, WeaponDef>;
+
+/** Legacy split constants for backward compat. Prefer WEAPONS. */
+export const SIDEARM_WEAPONS = Object.fromEntries(
+  (['shortsword', 'longsword', 'sabre', 'handgun'] as SidearmWeapon[]).map(k => [k, WEAPONS[k]])
+) as Record<SidearmWeapon, WeaponDef>;
+
+/** Returns true if this weapon can be placed in the secondary hand slot. */
+export function canGoInSecondary(weapon: WeaponType): boolean {
+  return WEAPONS[weapon].handedness === '1h' || WEAPONS[weapon].handedness === 'versatile';
+}
+
+/** Returns true if this weapon can be placed in the sidearm slot. */
+export function canGoInSidearm(weapon: WeaponType): boolean {
+  return WEAPONS[weapon].handedness === '1h';
+}
+
+/** Returns true if the primary weapon allows a secondary hand item. */
+export function secondarySlotAllowed(primary: WeaponType | null): boolean {
+  if (!primary) return true;
+  return WEAPONS[primary].handedness !== '2h';
+}

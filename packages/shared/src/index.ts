@@ -24,6 +24,7 @@ export * from './constants/stability.js';
 export * from './constants/starting.js';
 export * from './constants/settlements.js';
 export * from './constants/weapons.js';
+export * from './constants/shields.js';
 export * from './constants/armour.js';
 export * from './constants/mounts.js';
 

@@ -3,10 +3,12 @@ import { useParams } from 'react-router-dom';
 import { useStore } from '../../store/index.js';
 import {
   STATE_DICE_MULTIPLIER, SHIPS, BUILDINGS,
-  PRIMARY_WEAPONS, SIDEARM_WEAPONS, ARMOUR_TYPES, MOUNT_TYPES,
+  WEAPONS, SHIELDS, ARMOUR_TYPES, MOUNT_TYPES,
   computeUnitStats, MEN_PER_COMPANY, MEN_PER_SQUADRON,
+  canGoInSecondary, canGoInSidearm, secondarySlotAllowed,
   type ShipType, type UnitTemplate, type WeaponDesign, type TroopCounts,
-  type PrimaryWeapon, type SidearmWeapon, type ArmourType, type MountType,
+  type WeaponType, type ShieldType, type ArmourType, type MountType,
+  type WeaponDef, type ShieldDef,
 } from '@kingdoms/shared';
 import { Tooltip } from '../shared/Tooltip.js';
 import type { RecruitFromTemplateOrder, CreateTemplateOrder, UpdateTemplateOrder } from '../../store/slices/orders.js';
@@ -49,6 +51,9 @@ export function MilitaryTab() {
   const removeRecruitment = useStore(s => s.removeRecruitment);
   const removeMovement = useStore(s => s.removeMovement);
   const setPendingOrders = useStore(s => s.setPendingOrders);
+
+  const techProgress = useStore(s => s.techProgress) as Array<{ tech: string; isResearched: boolean }>;
+  const researchedTechs = new Set(techProgress.filter(t => t.isResearched).map(t => t.tech));
 
   const [activeTab, setActiveTab] = useState<'armies' | 'designer' | 'weapons' | 'production'>('armies');
 
@@ -187,6 +192,7 @@ export function MilitaryTab() {
           pendingOrders={pendingOrders}
           setPendingOrders={setPendingOrders}
           playerId={player.id as string}
+          researchedTechs={researchedTechs}
         />
       )}
 
@@ -197,6 +203,7 @@ export function MilitaryTab() {
           pendingOrders={pendingOrders}
           setPendingOrders={setPendingOrders}
           player={player}
+          researchedTechs={researchedTechs}
         />
       )}
 
@@ -205,6 +212,7 @@ export function MilitaryTab() {
         <ProductionTab
           settlements={mySettlements}
           equipmentOrders={myOrders}
+          weaponDesigns={myDesigns}
           pendingOrders={pendingOrders}
           setPendingOrders={setPendingOrders}
         />
@@ -215,8 +223,8 @@ export function MilitaryTab() {
 
 // ─── Unit Designer Tab ─────────────────────────────────────────────────────
 
-const PRIMARY_OPTS: Array<PrimaryWeapon | ''> = ['', 'greataxe', 'greatsword', 'polearm', 'longbow', 'musket', 'rifle'];
-const SIDEARM_OPTS: Array<SidearmWeapon | ''> = ['', 'shortsword', 'longsword', 'sabre', 'handgun'];
+const ALL_WEAPON_OPTS = ['', ...Object.keys(WEAPONS)] as Array<WeaponType | ''>;
+const ALL_SHIELD_OPTS = Object.keys(SHIELDS) as ShieldType[];
 const ARMOUR_OPTS: Array<ArmourType | ''> = ['', 'gambeson', 'mail', 'plate', 'breastplate'];
 const MOUNT_OPTS: Array<MountType | ''> = ['', 'horse', 'gryphon', 'demigryph'];
 
@@ -226,17 +234,22 @@ const BLANK_TEMPLATE: CreateTemplateOrder = {
   isMounted: false,
   companiesOrSquadrons: 3,
   primary: null,
+  secondary: null,
   sidearm: null,
   armour: null,
   mount: null,
+  primaryDesignId: null,
+  secondaryDesignId: null,
+  sidearmDesignId: null,
 };
 
-function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOrders, playerId }: {
+function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOrders, playerId, researchedTechs }: {
   templates: UnitTemplate[];
   weaponDesigns: WeaponDesign[];
   pendingOrders: any;
   setPendingOrders: (p: any) => void;
   playerId: string;
+  researchedTechs: Set<string>;
 }) {
   const [editing, setEditing] = useState<CreateTemplateOrder | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -261,9 +274,13 @@ function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOr
       isMounted: pending?.changes.isMounted ?? tmpl.isMounted,
       companiesOrSquadrons: pending?.changes.companiesOrSquadrons ?? tmpl.companiesOrSquadrons,
       primary: pending?.changes.primary ?? tmpl.primary,
+      secondary: pending?.changes.secondary ?? (tmpl as any).secondary ?? null,
       sidearm: pending?.changes.sidearm ?? tmpl.sidearm,
       armour: pending?.changes.armour ?? tmpl.armour,
       mount: pending?.changes.mount ?? tmpl.mount,
+      primaryDesignId: pending?.changes.primaryDesignId ?? (tmpl as any).primaryDesignId ?? null,
+      secondaryDesignId: pending?.changes.secondaryDesignId ?? (tmpl as any).secondaryDesignId ?? null,
+      sidearmDesignId: pending?.changes.sidearmDesignId ?? (tmpl as any).sidearmDesignId ?? null,
     });
     setEditingId(tmpl.id);
     setShowCreate(true);
@@ -290,7 +307,7 @@ function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOr
 
   const previewStats = editing
     ? computeUnitStats(
-        { ...editing, id: '__preview', gameId: '', playerId, weaponDesignId: null, createdAt: '', updatedAt: '' } as UnitTemplate,
+        { ...editing, id: '__preview', gameId: '', playerId, createdAt: '', updatedAt: '' } as unknown as UnitTemplate,
         weaponDesigns
       )
     : null;
@@ -331,7 +348,7 @@ function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOr
                   {' · '}{maxTroops} max troops
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                  {[tmpl.primary, tmpl.sidearm, tmpl.armour, tmpl.mount].filter(Boolean).map(e => fmt(e!)).join(', ') || 'No equipment'}
+                  {[tmpl.primary, (tmpl as any).secondary, tmpl.sidearm, tmpl.armour, tmpl.mount].filter(Boolean).map(e => fmt(e!)).join(', ') || 'No equipment'}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 4 }}>
@@ -354,7 +371,7 @@ function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOr
       {/* Pending new templates (not yet committed) */}
       {pendingCreate.map((tmpl, i) => {
         const stats = computeUnitStats(
-          { ...tmpl, id: `__new_${i}`, gameId: '', playerId, weaponDesignId: null, createdAt: '', updatedAt: '' } as UnitTemplate,
+          { ...tmpl, id: `__new_${i}`, gameId: '', playerId, createdAt: '', updatedAt: '' } as unknown as UnitTemplate,
           weaponDesigns
         );
         const maxTroops = tmpl.isMounted ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
@@ -437,40 +454,67 @@ function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOr
             </label>
 
             {!editing.isIrregular && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-                <label>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Primary Weapon</div>
-                  <select className="input" style={{ width: '100%', padding: '6px 8px' }}
-                    value={editing.primary ?? ''}
-                    onChange={e => setEditing({ ...editing, primary: (e.target.value as PrimaryWeapon) || null })}>
-                    {PRIMARY_OPTS.map(o => <option key={o} value={o}>{o ? fmt(o) : '— None —'}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Sidearm</div>
-                  <select className="input" style={{ width: '100%', padding: '6px 8px' }}
-                    value={editing.sidearm ?? ''}
-                    onChange={e => setEditing({ ...editing, sidearm: (e.target.value as SidearmWeapon) || null })}>
-                    {SIDEARM_OPTS.map(o => <option key={o} value={o}>{o ? fmt(o) : '— None —'}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Armour</div>
-                  <select className="input" style={{ width: '100%', padding: '6px 8px' }}
-                    value={editing.armour ?? ''}
-                    onChange={e => setEditing({ ...editing, armour: (e.target.value as ArmourType) || null })}>
-                    {ARMOUR_OPTS.map(o => <option key={o} value={o}>{o ? fmt(o) : '— None —'}</option>)}
-                  </select>
-                </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 12 }}>
+                <EquipmentPicker
+                  label="Primary (100%)"
+                  options={ALL_WEAPON_OPTS}
+                  getDef={(o) => o ? WEAPONS[o as WeaponType] : null}
+                  value={editing.primary ?? ''}
+                  researchedTechs={researchedTechs}
+                  onChange={v => {
+                    const newPrimary = (v as WeaponType) || null;
+                    // If new primary is 2H, clear secondary
+                    const clearSecondary = newPrimary && !secondarySlotAllowed(newPrimary);
+                    setEditing({
+                      ...editing,
+                      primary: newPrimary,
+                      secondary: clearSecondary ? null : editing.secondary,
+                      secondaryDesignId: clearSecondary ? null : (editing as any).secondaryDesignId,
+                    });
+                  }}
+                />
+                {secondarySlotAllowed(editing.primary) && (
+                  <EquipmentPicker
+                    label="Secondary (50%) — 1H/versatile weapon or shield"
+                    options={[
+                      '',
+                      ...Object.keys(WEAPONS).filter(w => canGoInSecondary(w as WeaponType)),
+                      ...ALL_SHIELD_OPTS,
+                    ]}
+                    getDef={(o) => {
+                      if (!o) return null;
+                      return (WEAPONS[o as WeaponType] as WeaponDef | undefined) ?? (SHIELDS[o as ShieldType] as ShieldDef | undefined) ?? null;
+                    }}
+                    value={(editing as any).secondary ?? ''}
+                    researchedTechs={researchedTechs}
+                    onChange={v => setEditing({ ...editing, secondary: (v as WeaponType | ShieldType) || null } as any)}
+                  />
+                )}
+                <EquipmentPicker
+                  label="Sidearm (25%) — 1H weapon"
+                  options={['', ...Object.keys(WEAPONS).filter(w => canGoInSidearm(w as WeaponType))]}
+                  getDef={(o) => o ? WEAPONS[o as WeaponType] : null}
+                  value={editing.sidearm ?? ''}
+                  researchedTechs={researchedTechs}
+                  onChange={v => setEditing({ ...editing, sidearm: (v as WeaponType) || null })}
+                />
+                <EquipmentPicker
+                  label="Armour"
+                  options={ARMOUR_OPTS}
+                  getDef={(o) => o ? ARMOUR_TYPES[o as ArmourType] : null}
+                  value={editing.armour ?? ''}
+                  researchedTechs={researchedTechs}
+                  onChange={v => setEditing({ ...editing, armour: (v as ArmourType) || null })}
+                />
                 {editing.isMounted && (
-                  <label>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Mount</div>
-                    <select className="input" style={{ width: '100%', padding: '6px 8px' }}
-                      value={editing.mount ?? ''}
-                      onChange={e => setEditing({ ...editing, mount: (e.target.value as MountType) || null })}>
-                      {MOUNT_OPTS.map(o => <option key={o} value={o}>{o ? fmt(o) : '— None —'}</option>)}
-                    </select>
-                  </label>
+                  <EquipmentPicker
+                    label="Mount"
+                    options={MOUNT_OPTS}
+                    getDef={() => null}
+                    value={editing.mount ?? ''}
+                    researchedTechs={researchedTechs}
+                    onChange={v => setEditing({ ...editing, mount: (v as MountType) || null })}
+                  />
                 )}
               </div>
             )}
@@ -496,6 +540,50 @@ function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOr
   );
 }
 
+// ─── Equipment Picker ──────────────────────────────────────────────────────
+
+function EquipmentPicker({ label, options, getDef, value, onChange, researchedTechs }: {
+  label: string;
+  options: string[];
+  getDef: (o: string) => { techRequired?: string | null; name: string } | null;
+  value: string;
+  onChange: (v: string) => void;
+  researchedTechs: Set<string>;
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>{label}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {options.map(o => {
+          const def = getDef(o);
+          const techReq = def?.techRequired ?? null;
+          const locked = !!techReq && !researchedTechs.has(techReq);
+          const selected = value === o;
+          return (
+            <button
+              key={o}
+              disabled={locked}
+              onClick={() => onChange(locked ? value : o)}
+              title={locked ? `Requires: ${fmt(techReq!)}` : undefined}
+              style={{
+                padding: '5px 10px', fontSize: 12, borderRadius: 4, cursor: locked ? 'not-allowed' : 'pointer',
+                border: selected ? '1px solid var(--accent-gold)' : '1px solid var(--border-dark)',
+                background: selected ? 'var(--accent-gold)' : 'var(--bg-inset)',
+                color: selected ? 'var(--bg-parchment-dark)' : locked ? 'var(--text-muted)' : 'var(--text-primary)',
+                opacity: locked ? 0.45 : 1,
+                fontFamily: 'var(--font-body)',
+              }}
+            >
+              {o ? fmt(o) : '— None —'}
+              {locked && ' 🔒'}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Stat preview bar ──────────────────────────────────────────────────────
 
 function StatsPreview({ stats }: { stats: { fire: number; shock: number; defence: number; morale: number; armour: number; ap: number; hitsOn: number } }) {
@@ -513,51 +601,78 @@ function StatsPreview({ stats }: { stats: { fire: number; shock: number; defence
 
 // ─── Weapon Designer Tab ───────────────────────────────────────────────────
 
-const STAT_KEYS = ['fire', 'shock', 'defence', 'morale', 'ap', 'armour'] as const;
+const STAT_KEYS = ['fire', 'shock', 'defence', 'morale', 'ap'] as const;
 type StatKey = typeof STAT_KEYS[number];
 
-function WeaponDesignerTab({ designs, pendingOrders, setPendingOrders, player }: {
+const ALL_DESIGNABLE: Array<{ key: WeaponType | ShieldType; group: string }> = [
+  ...(Object.keys(WEAPONS) as WeaponType[]).map(k => ({ key: k, group: 'Weapon' })),
+  ...(Object.keys(SHIELDS) as ShieldType[]).map(k => ({ key: k, group: 'Shield' })),
+];
+
+function WeaponDesignerTab({ designs, pendingOrders, setPendingOrders, player, researchedTechs }: {
   designs: WeaponDesign[];
   pendingOrders: any;
   setPendingOrders: (p: any) => void;
   player: Record<string, unknown>;
+  researchedTechs: Set<string>;
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newDesign, setNewDesign] = useState({
-    baseWeapon: 'polearm' as PrimaryWeapon | SidearmWeapon,
+    baseWeapon: 'polearm' as WeaponType | ShieldType,
     name: '',
     statModifiers: {} as Partial<Record<StatKey, number>>,
-    costModifier: 0,
   });
   const pending = pendingOrders.createWeaponDesigns ?? [];
   const pendingRetire = pendingOrders.retireWeaponDesigns ?? [];
 
-  const COST = 500;
   const gold = (player.gold as number) ?? 0;
 
+  const baseDef: WeaponDef | ShieldDef | undefined =
+    WEAPONS[newDesign.baseWeapon as WeaponType] ?? SHIELDS[newDesign.baseWeapon as ShieldType];
+  const budget = baseDef?.designBudget ?? 3;
+  // Only allow editing stats the weapon/shield actually uses
+  const activeStatKeys = STAT_KEYS.filter(k => ((baseDef?.statBonus as any)?.[k] ?? 0) !== 0);
+  const budgetUsed = activeStatKeys.reduce((sum, k) => sum + Math.max(0, newDesign.statModifiers[k] ?? 0), 0);
+  const balance = activeStatKeys.reduce((sum, k) => sum + (newDesign.statModifiers[k] ?? 0), 0);
+  // Cost scales with weapon production cost + points spent
+  const designCost = Math.round((baseDef?.productionCost ?? 2) * 50 + budgetUsed * 75);
+  const canSubmit = newDesign.name.trim().length > 0 && balance === 0 && budgetUsed <= budget && gold >= designCost;
+
+  function setMod(k: StatKey, delta: number) {
+    const cur = newDesign.statModifiers[k] ?? 0;
+    const next = cur + delta;
+    // Don't allow going beyond budget on positive side
+    if (delta > 0 && budgetUsed >= budget) return;
+    setNewDesign({ ...newDesign, statModifiers: { ...newDesign.statModifiers, [k]: next } });
+  }
+
+  function openCreate() {
+    setNewDesign({ baseWeapon: 'polearm', name: '', statModifiers: {} });
+    setShowCreate(true);
+  }
+
   function addDesign() {
-    if (!newDesign.name.trim()) return;
-    setPendingOrders({ createWeaponDesigns: [...pending, newDesign] });
+    if (!canSubmit) return;
+    const mods: Partial<Record<StatKey, number>> = {};
+    for (const k of activeStatKeys) {
+      const v = newDesign.statModifiers[k] ?? 0;
+      if (v !== 0) mods[k] = v;
+    }
+    setPendingOrders({ createWeaponDesigns: [...pending, { ...newDesign, statModifiers: mods, goldCost: designCost }] });
     setShowCreate(false);
-    setNewDesign({ baseWeapon: 'polearm', name: '', statModifiers: {}, costModifier: 0 });
   }
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <h3 style={{ margin: 0 }}>Weapon Designs</h3>
-        <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: 13 }}
-          onClick={() => setShowCreate(true)} disabled={gold < COST}>
-          + New Design (500g)
+        <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: 13 }} onClick={openCreate}>
+          + New Design
         </button>
       </div>
 
-      {gold < COST && (
-        <p style={{ fontSize: 12, color: 'var(--accent-red)', marginBottom: 8 }}>Requires {COST}g — insufficient funds.</p>
-      )}
-
       <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-        Designs take 2 turns to develop before becoming active. Cost: 500g each.
+        Designs take 2 turns to develop. Cost scales with the weapon's production cost and the number of stat points shifted.
       </p>
 
       {designs.length === 0 && pending.length === 0 && (
@@ -567,6 +682,10 @@ function WeaponDesignerTab({ designs, pendingOrders, setPendingOrders, player }:
       {designs.map((d: any) => {
         const isRetiring = pendingRetire.includes(d.id);
         const statusColor = d.status === 'ready' ? 'var(--accent-green)' : d.status === 'developing' ? 'var(--accent-gold)' : 'var(--text-muted)';
+        const mods = d.statModifiers as Record<string, number> | undefined;
+        const modStr = mods && Object.keys(mods).length > 0
+          ? Object.entries(mods).map(([k, v]) => `${fmt(k)} ${v > 0 ? '+' : ''}${v}`).join(', ')
+          : 'No stat changes';
         return (
           <div key={d.id} className="settlement-card" style={{ marginTop: 8, opacity: isRetiring ? 0.5 : 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -576,16 +695,8 @@ function WeaponDesignerTab({ designs, pendingOrders, setPendingOrders, player }:
                   {d.status === 'developing' ? `Developing (${d.turnsRemaining} turns)` : fmt(d.status)}
                 </span>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Base: {fmt(d.baseWeapon)}
-                  {d.costModifier !== 0 && ` · Cost ${d.costModifier > 0 ? '+' : ''}${Math.round(d.costModifier * 100)}%`}
+                  {fmt(d.baseWeapon)} variant · {modStr}
                 </div>
-                {d.statModifiers && Object.keys(d.statModifiers).length > 0 && (
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                    {Object.entries(d.statModifiers as Record<string, number>).map(([k, v]) => (
-                      `${fmt(k)} ${v > 0 ? '+' : ''}${v}`
-                    )).join(', ')}
-                  </div>
-                )}
               </div>
               <div style={{ display: 'flex', gap: 4 }}>
                 {!isRetiring
@@ -605,8 +716,8 @@ function WeaponDesignerTab({ designs, pendingOrders, setPendingOrders, player }:
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <strong>{d.name}</strong>
-              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--accent-green)', border: '1px solid', borderRadius: 3, padding: '1px 4px' }}>NEW (−500g)</span>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Base: {fmt(d.baseWeapon)}</div>
+              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--accent-green)', border: '1px solid', borderRadius: 3, padding: '1px 4px' }}>NEW (−{d.goldCost ?? '?'}g)</span>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{fmt(d.baseWeapon)} variant</div>
             </div>
             <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: 12 }}
               onClick={() => setPendingOrders({ createWeaponDesigns: pending.filter((_: any, j: number) => j !== i) })}>Remove</button>
@@ -615,9 +726,9 @@ function WeaponDesignerTab({ designs, pendingOrders, setPendingOrders, player }:
       ))}
 
       {/* Create modal */}
-      {showCreate && (
+      {showCreate && baseDef && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-dark)', borderRadius: 8, padding: 24, width: 440 }}>
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-dark)', borderRadius: 8, padding: 24, width: 460, maxHeight: '85vh', overflowY: 'auto' }}>
             <h3 style={{ marginBottom: 16 }}>New Weapon Design</h3>
 
             <label style={{ display: 'block', marginBottom: 12 }}>
@@ -627,52 +738,98 @@ function WeaponDesignerTab({ designs, pendingOrders, setPendingOrders, player }:
                 placeholder="e.g. Light Rifle" />
             </label>
 
-            <label style={{ display: 'block', marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Base Weapon</div>
-              <select className="input" style={{ width: '100%', padding: '6px 8px' }}
-                value={newDesign.baseWeapon}
-                onChange={e => setNewDesign({ ...newDesign, baseWeapon: e.target.value as PrimaryWeapon | SidearmWeapon })}>
-                <optgroup label="Primaries">
-                  {(['greataxe', 'greatsword', 'polearm', 'longbow', 'musket', 'rifle'] as PrimaryWeapon[]).map(w => (
-                    <option key={w} value={w}>{fmt(w)}</option>
-                  ))}
-                </optgroup>
-                <optgroup label="Sidearms">
-                  {(['shortsword', 'longsword', 'sabre', 'handgun'] as SidearmWeapon[]).map(w => (
-                    <option key={w} value={w}>{fmt(w)}</option>
-                  ))}
-                </optgroup>
-              </select>
-            </label>
-
+            {/* Base weapon picker */}
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Stat Modifiers (tradeoffs, each ±3 max)</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-                {STAT_KEYS.map(k => (
-                  <label key={k} style={{ fontSize: 12 }}>
-                    <div style={{ color: 'var(--text-muted)', marginBottom: 3 }}>{fmt(k)}</div>
-                    <input type="number" className="input" style={{ width: '100%', padding: '4px 6px' }}
-                      min={-3} max={3} step={1}
-                      value={newDesign.statModifiers[k] ?? 0}
-                      onChange={e => setNewDesign({ ...newDesign, statModifiers: { ...newDesign.statModifiers, [k]: Number(e.target.value) } })} />
-                  </label>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Base Weapon</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {ALL_DESIGNABLE.map(({ key, group }) => {
+                  const def = WEAPONS[key as WeaponType] ?? SHIELDS[key as ShieldType];
+                  const techReq = def?.techRequired;
+                  const locked = !!techReq && !researchedTechs.has(techReq);
+                  const selected = newDesign.baseWeapon === key;
+                  return (
+                    <button key={key} disabled={locked}
+                      onClick={() => !locked && setNewDesign({ ...newDesign, baseWeapon: key, statModifiers: {} })}
+                      title={locked ? `Requires: ${fmt(techReq!)}` : `${group}: ${def?.name}`}
+                      style={{
+                        padding: '5px 10px', fontSize: 12, borderRadius: 4,
+                        cursor: locked ? 'not-allowed' : 'pointer',
+                        border: selected ? '1px solid var(--accent-gold)' : '1px solid var(--border-dark)',
+                        background: selected ? 'var(--accent-gold)' : 'var(--bg-inset)',
+                        color: selected ? 'var(--bg-parchment-dark)' : locked ? 'var(--text-muted)' : 'var(--text-primary)',
+                        opacity: locked ? 0.45 : 1,
+                        fontFamily: 'var(--font-body)',
+                      }}>
+                      {fmt(key)}{locked ? ' 🔒' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Base stats */}
+            <div style={{ background: 'var(--bg-inset)', borderRadius: 6, padding: '10px 12px', marginBottom: 12, border: '1px solid var(--border-color)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Base Stats — {baseDef.name}</div>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12 }}>
+                {Object.entries(baseDef.statBonus).map(([k, v]) => v !== 0 && (
+                  <span key={k}><span style={{ color: 'var(--text-muted)' }}>{fmt(k)}:</span> <strong>{v}</strong></span>
                 ))}
               </div>
             </div>
 
-            <label style={{ display: 'block', marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-                Production Cost Modifier: {newDesign.costModifier > 0 ? '+' : ''}{Math.round(newDesign.costModifier * 100)}%
+            {/* Budget tracker */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Budget: {budgetUsed}/{budget} points used</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: balance === 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                Balance: {balance > 0 ? `+${balance}` : balance} {balance === 0 ? '✓' : '(must reach 0)'}
+              </span>
+            </div>
+
+            {/* Stat modifier grid */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+                Shift stats. Each +1 costs a budget point; take a −1 somewhere to offset.
               </div>
-              <input type="range" style={{ width: '100%' }} min={-30} max={30} step={5}
-                value={Math.round(newDesign.costModifier * 100)}
-                onChange={e => setNewDesign({ ...newDesign, costModifier: Number(e.target.value) / 100 })} />
-            </label>
+              {activeStatKeys.length === 0 ? (
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>No stats to modify for this weapon.</p>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {activeStatKeys.map(k => {
+                    const base = (baseDef.statBonus as any)[k] ?? 0;
+                    const mod = newDesign.statModifiers[k] ?? 0;
+                    const canIncrease = budgetUsed < budget;
+                    return (
+                      <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-inset)', borderRadius: 4, padding: '6px 8px' }}>
+                        <span style={{ flex: 1, fontSize: 12, color: 'var(--text-muted)' }}>{fmt(k)}</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 24, textAlign: 'right' }}>{base}</span>
+                        <button onClick={() => setMod(k, -1)} style={{ width: 24, height: 24, border: '1px solid var(--border-dark)', borderRadius: 3, background: 'var(--bg-surface)', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>−</button>
+                        <span style={{ minWidth: 28, textAlign: 'center', fontSize: 13, fontWeight: 600,
+                          color: mod > 0 ? 'var(--accent-green)' : mod < 0 ? 'var(--accent-red)' : 'var(--text-primary)' }}>
+                          {mod > 0 ? `+${mod}` : mod}
+                        </span>
+                        <button onClick={() => setMod(k, 1)} disabled={!canIncrease} style={{ width: 24, height: 24, border: '1px solid var(--border-dark)', borderRadius: 3, background: 'var(--bg-surface)', cursor: canIncrease ? 'pointer' : 'not-allowed', fontSize: 14, lineHeight: 1, opacity: canIncrease ? 1 : 0.4 }}>+</button>
+                        <span style={{ fontSize: 12, fontWeight: 600, minWidth: 24, textAlign: 'right', color: mod !== 0 ? 'var(--accent-gold)' : 'var(--text-secondary)' }}>={base + mod}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Cost summary */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, padding: '8px 10px', background: 'var(--bg-inset)', borderRadius: 4 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Base ({baseDef.productionCost} × 50) + {budgetUsed} pts × 75
+              </span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: gold >= designCost ? 'var(--text-primary)' : 'var(--accent-red)' }}>
+                {designCost}g {gold < designCost ? '— insufficient funds' : ''}
+              </span>
+            </div>
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={addDesign} disabled={!newDesign.name.trim()}>
-                Queue Design (−500g)
+              <button className="btn btn-primary" onClick={addDesign} disabled={!canSubmit}>
+                Queue Design (−{designCost}g)
               </button>
             </div>
           </div>
@@ -684,22 +841,19 @@ function WeaponDesignerTab({ designs, pendingOrders, setPendingOrders, player }:
 
 // ─── Production Tab ────────────────────────────────────────────────────────
 
-function ProductionTab({ settlements, equipmentOrders, pendingOrders, setPendingOrders }: {
+function ProductionTab({ settlements, equipmentOrders, weaponDesigns, pendingOrders, setPendingOrders }: {
   settlements: any[];
   equipmentOrders: any[];
+  weaponDesigns: WeaponDesign[];
   pendingOrders: any;
   setPendingOrders: (p: any) => void;
 }) {
   const pendingNew: any[] = pendingOrders.placeEquipmentOrders ?? [];
   const pendingCancel: string[] = pendingOrders.cancelEquipmentOrders ?? [];
 
-  const [placing, setPlacing] = useState<{ settlementId: string; equipmentType: string; quantity: number } | null>(null);
+  const readyDesigns = weaponDesigns.filter((d: any) => d.status === 'ready');
 
-  const EQUIPMENT_OPTS = [
-    ...Object.keys(PRIMARY_WEAPONS),
-    ...Object.keys(SIDEARM_WEAPONS),
-    ...Object.keys(ARMOUR_TYPES),
-  ];
+  const [placing, setPlacing] = useState<{ settlementId: string; equipmentType: string; quantity: number; designId?: string; designName?: string } | null>(null);
 
   return (
     <div>
@@ -730,12 +884,17 @@ function ProductionTab({ settlements, equipmentOrders, pendingOrders, setPending
             {activeOrders.map((o: any) => {
               const isCancelling = pendingCancel.includes(o.id);
               const progress = o.quantityOrdered > 0 ? (o.quantityFulfilled / o.quantityOrdered) * 100 : 0;
-              const capacity = EQUIPMENT_OPTS.slice(0, 6).includes(o.equipmentType) ? armsCount : armourCount;
+              const isWeapon = !!(WEAPONS as any)[o.equipmentType] || !!(SHIELDS as any)[o.equipmentType];
+              const capacity = isWeapon ? armsCount : armourCount;
               const remaining = capacity > 0 ? Math.ceil((o.quantityOrdered - o.quantityFulfilled) / capacity) : '?';
+              const linkedDesign = o.designId ? readyDesigns.find((d: any) => d.id === o.designId) : null;
+              const orderLabel = linkedDesign ? linkedDesign.name : fmt(o.equipmentType);
               return (
                 <div key={o.id} style={{ marginBottom: 8, padding: '8px 10px', background: 'var(--bg-inset)', borderRadius: 4, opacity: isCancelling ? 0.5 : 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <span style={{ fontSize: 13 }}>{fmt(o.equipmentType)} ×{o.quantityOrdered}</span>
+                    <span style={{ fontSize: 13 }}>{orderLabel} ×{o.quantityOrdered}
+                      {linkedDesign && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>({fmt(o.equipmentType)})</span>}
+                    </span>
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
                       <span>~{remaining} turns</span>
                       {!isCancelling
@@ -758,7 +917,11 @@ function ProductionTab({ settlements, equipmentOrders, pendingOrders, setPending
             {pendingNew.filter((o: any) => o.settlementId === s.id).map((o: any, i: number) => (
               <div key={`new-${i}`} style={{ marginBottom: 8, padding: '8px 10px', background: 'var(--bg-inset)', borderRadius: 4, border: '1px solid var(--accent-green)', opacity: 0.9 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 13 }}>{fmt(o.equipmentType)} ×{o.quantity} <span style={{ fontSize: 11, color: 'var(--accent-green)' }}>NEW</span></span>
+                  <span style={{ fontSize: 13 }}>
+                    {o.designName ?? fmt(o.equipmentType)} ×{o.quantity}
+                    {o.designName && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>({fmt(o.equipmentType)})</span>}
+                    {' '}<span style={{ fontSize: 11, color: 'var(--accent-green)' }}>NEW</span>
+                  </span>
                   <button className="btn btn-secondary" style={{ padding: '1px 6px', fontSize: 11 }}
                     onClick={() => setPendingOrders({ placeEquipmentOrders: pendingNew.filter((_: any, j: number) => j !== i) })}>Remove</button>
                 </div>
@@ -785,23 +948,80 @@ function ProductionTab({ settlements, equipmentOrders, pendingOrders, setPending
       {/* Place order modal */}
       {placing && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-dark)', borderRadius: 8, padding: 24, width: 360 }}>
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-dark)', borderRadius: 8, padding: 24, width: 400, maxHeight: '85vh', overflowY: 'auto' }}>
             <h3 style={{ marginBottom: 16 }}>Place Equipment Order</h3>
 
-            <label style={{ display: 'block', marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Equipment Type</div>
-              <select className="input" style={{ width: '100%', padding: '6px 8px' }}
-                value={placing.equipmentType}
-                onChange={e => setPlacing({ ...placing, equipmentType: e.target.value })}>
-                <optgroup label="Weapons (Arms Workshop)">
-                  {Object.keys(PRIMARY_WEAPONS).map(w => <option key={w} value={w}>{fmt(w)}</option>)}
-                  {Object.keys(SIDEARM_WEAPONS).map(w => <option key={w} value={w}>{fmt(w)}</option>)}
-                </optgroup>
-                <optgroup label="Armour (Armour Workshop)">
-                  {Object.keys(ARMOUR_TYPES).map(a => <option key={a} value={a}>{fmt(a)}</option>)}
-                </optgroup>
-              </select>
-            </label>
+            {/* Weapon designs section */}
+            {readyDesigns.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Weapon Designs (Arms Workshop)</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {readyDesigns.map((d: any) => {
+                    const selected = placing.designId === d.id;
+                    return (
+                      <button key={d.id}
+                        onClick={() => setPlacing({ ...placing, equipmentType: d.baseWeapon, designId: d.id, designName: d.name })}
+                        style={{
+                          textAlign: 'left', padding: '7px 10px', borderRadius: 4, cursor: 'pointer',
+                          border: selected ? '1px solid var(--accent-gold)' : '1px solid var(--border-dark)',
+                          background: selected ? 'var(--bg-surface-hover)' : 'var(--bg-inset)',
+                          fontFamily: 'var(--font-body)',
+                        }}>
+                        <span style={{ fontSize: 13, color: selected ? 'var(--accent-gold)' : 'var(--text-primary)' }}>{d.name}</span>
+                        <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>{fmt(d.baseWeapon)} variant</span>
+                        {d.statModifiers && Object.keys(d.statModifiers).length > 0 && (
+                          <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-secondary)' }}>
+                            {Object.entries(d.statModifiers as Record<string, number>).map(([k, v]) => `${fmt(k)} ${v > 0 ? '+' : ''}${v}`).join(', ')}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Generic weapons (no design) */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Generic Weapons (no design)</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {[...Object.keys(WEAPONS), ...Object.keys(SHIELDS)].map(w => {
+                  const selected = placing.equipmentType === w && !placing.designId;
+                  return (
+                    <button key={w}
+                      onClick={() => setPlacing({ ...placing, equipmentType: w, designId: undefined, designName: undefined })}
+                      style={{
+                        padding: '5px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
+                        border: selected ? '1px solid var(--accent-gold)' : '1px solid var(--border-dark)',
+                        background: selected ? 'var(--accent-gold)' : 'var(--bg-inset)',
+                        color: selected ? 'var(--bg-parchment-dark)' : 'var(--text-primary)',
+                        fontFamily: 'var(--font-body)',
+                      }}>{fmt(w)}</button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Armour */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Armour (Armour Workshop)</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {Object.keys(ARMOUR_TYPES).map(a => {
+                  const selected = placing.equipmentType === a && !placing.designId;
+                  return (
+                    <button key={a}
+                      onClick={() => setPlacing({ ...placing, equipmentType: a, designId: undefined, designName: undefined })}
+                      style={{
+                        padding: '5px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
+                        border: selected ? '1px solid var(--accent-gold)' : '1px solid var(--border-dark)',
+                        background: selected ? 'var(--accent-gold)' : 'var(--bg-inset)',
+                        color: selected ? 'var(--bg-parchment-dark)' : 'var(--text-primary)',
+                        fontFamily: 'var(--font-body)',
+                      }}>{fmt(a)}</button>
+                  );
+                })}
+              </div>
+            </div>
 
             <label style={{ display: 'block', marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Quantity</div>

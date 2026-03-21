@@ -1,21 +1,39 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: kingdoms
-      POSTGRES_PASSWORD: kingdoms_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: kingdoms
       POSTGRES_DB: kingdoms
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:kingdoms@postgres:5432/kingdoms
+      REDIS_URL: redis://redis:6379
+      PORT: "3000"
+      CLIENT_URL: "http://localhost:5173"
+    depends_on:
+      - postgres
+      - redis
 
 volumes:
   pgdata:

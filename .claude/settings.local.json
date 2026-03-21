@@ -22,7 +22,11 @@
       "Bash(docker exec:*)",
       "Bash(xargs grep:*)",
       "Bash(pnpm --filter @kingdoms/shared build)",
-      "Bash(pnpm --filter @kingdoms/server build)"
+      "Bash(pnpm --filter @kingdoms/server build)",
+      "Read(//c/Users/Rory/.rd/**)",
+      "Read(//c/Users/Rory/Kingdoms Game/$HOME/.rd/**)",
+      "Read(//c/Program Files/Rancher Desktop//**)",
+      "Read(//c/Users/Rory/AppData/Local/Programs/**)"
     ]
   }
 }

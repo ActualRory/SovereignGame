@@ -18,15 +18,24 @@ export interface WeaponStatBonus {
   ap?: number;
 }
 
+/** Workshop production points generated per workshop building per minor turn. */
+export const WORKSHOP_POINTS_PER_TURN = 10;
+
 export interface WeaponDef {
   name: string;
   statBonus: WeaponStatBonus;
-  /** Resources consumed from settlement storage to produce one batch. */
+  /** Resources consumed from settlement storage per item produced. */
   inputs: Partial<Record<ResourceType, number>>;
   /** Tech required to unlock production. null = available from start. */
   techRequired: TechId | null;
   /** Max stat points that can be shifted via weapon design (total pool for variants). */
   designBudget: number;
+  /**
+   * Production cost in workshop-points per item.
+   * items/workshop/turn = floor(WORKSHOP_POINTS_PER_TURN / productionCost)
+   * Modified by weapon design costModifier and order priority.
+   */
+  productionCost: number;
 }
 
 export const PRIMARY_WEAPONS: Record<PrimaryWeapon, WeaponDef> = {
@@ -36,6 +45,7 @@ export const PRIMARY_WEAPONS: Record<PrimaryWeapon, WeaponDef> = {
     inputs: { iron: 1, leather: 1 },
     techRequired: null,
     designBudget: 3,
+    productionCost: 2,
   },
   greatsword: {
     name: 'Greatsword',
@@ -43,6 +53,7 @@ export const PRIMARY_WEAPONS: Record<PrimaryWeapon, WeaponDef> = {
     inputs: { steel: 1, leather: 1 },
     techRequired: 'foundry',
     designBudget: 3,
+    productionCost: 3,
   },
   polearm: {
     name: 'Polearm',
@@ -50,6 +61,7 @@ export const PRIMARY_WEAPONS: Record<PrimaryWeapon, WeaponDef> = {
     inputs: { iron: 1, timber: 1 },
     techRequired: null,
     designBudget: 3,
+    productionCost: 2,
   },
   longbow: {
     name: 'Longbow',
@@ -57,6 +69,7 @@ export const PRIMARY_WEAPONS: Record<PrimaryWeapon, WeaponDef> = {
     inputs: { timber: 2 },
     techRequired: null,
     designBudget: 3,
+    productionCost: 2,
   },
   musket: {
     name: 'Musket',
@@ -64,6 +77,7 @@ export const PRIMARY_WEAPONS: Record<PrimaryWeapon, WeaponDef> = {
     inputs: { iron: 1, timber: 1, gunpowder: 1 },
     techRequired: 'alchemy',
     designBudget: 4,
+    productionCost: 5,
   },
   rifle: {
     name: 'Rifle',
@@ -71,6 +85,7 @@ export const PRIMARY_WEAPONS: Record<PrimaryWeapon, WeaponDef> = {
     inputs: { steel: 1, timber: 1, gunpowder: 1 },
     techRequired: 'firearms',
     designBudget: 4,
+    productionCost: 10,
   },
 };
 
@@ -81,6 +96,7 @@ export const SIDEARM_WEAPONS: Record<SidearmWeapon, WeaponDef> = {
     inputs: { iron: 1 },
     techRequired: null,
     designBudget: 2,
+    productionCost: 2,
   },
   longsword: {
     name: 'Longsword',
@@ -88,6 +104,7 @@ export const SIDEARM_WEAPONS: Record<SidearmWeapon, WeaponDef> = {
     inputs: { steel: 1 },
     techRequired: 'foundry',
     designBudget: 2,
+    productionCost: 3,
   },
   sabre: {
     name: 'Sabre',
@@ -95,6 +112,7 @@ export const SIDEARM_WEAPONS: Record<SidearmWeapon, WeaponDef> = {
     inputs: { steel: 1 },
     techRequired: 'foundry',
     designBudget: 2,
+    productionCost: 3,
   },
   handgun: {
     name: 'Handgun',
@@ -102,5 +120,6 @@ export const SIDEARM_WEAPONS: Record<SidearmWeapon, WeaponDef> = {
     inputs: { iron: 1, gunpowder: 1 },
     techRequired: 'firearms',
     designBudget: 2,
+    productionCost: 5,
   },
 };

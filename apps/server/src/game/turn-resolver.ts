@@ -21,7 +21,7 @@ import {
   getStabilityBand,
   getBaseStats, getDefaultPosition, MEN_PER_COMPANY, MEN_PER_SQUADRON,
   WEAPON_DESIGN_COST, WEAPON_DESIGN_DEVELOP_TURNS,
-  PRIMARY_WEAPONS, SIDEARM_WEAPONS, ARMOUR_TYPES,
+  PRIMARY_WEAPONS, SIDEARM_WEAPONS, ARMOUR_TYPES, WORKSHOP_POINTS_PER_TURN,
   computeUnitStats,
   type CombatInput, type ArmySide, type CombatUnitInput, type CombatResult,
   type TurnOrders, emptyOrders,
@@ -1052,7 +1052,12 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     }
   }
 
-  // Process active equipment orders — each Arms/Armour Workshop building = +1 capacity unit per turn
+  // Process active equipment orders.
+  // Throughput = floor(workshopCount × WORKSHOP_POINTS_PER_TURN × priorityMultiplier / effectiveProductionCost)
+  // Input materials are scaled by the same priority multiplier (rush costs more per item).
+  const PRIORITY_THROUGHPUT: Record<string, number> = { relaxed: 0.75, standard: 1.0, rush: 1.33 };
+  const PRIORITY_INPUT_COST: Record<string, number>  = { relaxed: 0.75, standard: 1.0, rush: 1.25 };
+
   const activeOrders = await db.select().from(schema.equipmentOrders)
     .where(and(
       eq(schema.equipmentOrders.gameId, gameId),
@@ -1067,35 +1072,41 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     const buildings = await db.select().from(schema.buildings)
       .where(eq(schema.buildings.settlementId, settlement.id));
 
-    // Determine which workshop type is needed for this equipment
-    const primaryWeaponKeys = Object.keys(PRIMARY_WEAPONS);
-    const sidearmWeaponKeys = Object.keys(SIDEARM_WEAPONS);
-    const armourKeys = Object.keys(ARMOUR_TYPES);
-
-    const workshopType = primaryWeaponKeys.includes(eqOrder.equipmentType) || sidearmWeaponKeys.includes(eqOrder.equipmentType)
-      ? 'arms_workshop' : armourKeys.includes(eqOrder.equipmentType) ? 'armour_workshop' : null;
+    // Determine workshop type and base definition
+    const primaryDef   = PRIMARY_WEAPONS[eqOrder.equipmentType as PrimaryWeapon];
+    const sidearmDef   = SIDEARM_WEAPONS[eqOrder.equipmentType as SidearmWeapon];
+    const armourDef    = ARMOUR_TYPES[eqOrder.equipmentType as ArmourType];
+    const workshopType = (primaryDef || sidearmDef) ? 'arms_workshop' : armourDef ? 'armour_workshop' : null;
     if (!workshopType) continue;
 
     const workshopCount = buildings.filter(b => b.type === workshopType && !b.isConstructing).length;
     if (workshopCount === 0) continue;
 
-    const remaining = eqOrder.quantityOrdered - eqOrder.quantityFulfilled;
-    const canProduce = Math.min(remaining, workshopCount);
+    const def = primaryDef ?? sidearmDef ?? armourDef;
+    const productionCost: number = def.productionCost;
+    const inputs = def.inputs;
 
-    // Deduct input materials
+    const priority = eqOrder.priority ?? 'standard';
+    const throughputMult = PRIORITY_THROUGHPUT[priority] ?? 1.0;
+    const inputCostMult  = PRIORITY_INPUT_COST[priority]  ?? 1.0;
+
+    // Points available this turn across all workshops
+    const totalPoints = workshopCount * WORKSHOP_POINTS_PER_TURN * throughputMult;
+    const remaining   = eqOrder.quantityOrdered - eqOrder.quantityFulfilled;
+    const canProduce  = Math.min(remaining, Math.floor(totalPoints / productionCost));
+    if (canProduce <= 0) continue;
+
+    // Deduct input materials (scaled by priority cost multiplier)
     const storage = { ...(settlement.storage as Record<string, number>) };
-    const inputs = workshopType === 'arms_workshop'
-      ? (PRIMARY_WEAPONS[eqOrder.equipmentType as PrimaryWeapon]?.inputs ?? SIDEARM_WEAPONS[eqOrder.equipmentType as SidearmWeapon]?.inputs ?? {})
-      : (ARMOUR_TYPES[eqOrder.equipmentType as ArmourType]?.inputs ?? {});
-
     let hasInputs = true;
     for (const [mat, qty] of Object.entries(inputs)) {
-      if ((storage[mat] ?? 0) < (qty ?? 0) * canProduce) { hasInputs = false; break; }
+      const required = Math.ceil((qty ?? 0) * canProduce * inputCostMult);
+      if ((storage[mat] ?? 0) < required) { hasInputs = false; break; }
     }
     if (!hasInputs) continue;
 
     for (const [mat, qty] of Object.entries(inputs)) {
-      storage[mat] = (storage[mat] ?? 0) - (qty ?? 0) * canProduce;
+      storage[mat] = (storage[mat] ?? 0) - Math.ceil((qty ?? 0) * canProduce * inputCostMult);
     }
 
     // Add produced equipment to storage

@@ -20,6 +20,7 @@ export const relationTypeEnum = pgEnum('relation_type', [
 export const tradeTierEnum = pgEnum('trade_tier', ['open_trade', 'trade_route', 'economic_union']);
 export const weaponDesignStatusEnum = pgEnum('weapon_design_status', ['developing', 'ready', 'retired']);
 export const equipmentOrderStatusEnum = pgEnum('equipment_order_status', ['active', 'fulfilled', 'cancelled']);
+export const equipmentOrderPriorityEnum = pgEnum('equipment_order_priority', ['relaxed', 'standard', 'rush']);
 export const officerRankEnum = pgEnum('officer_rank', ['major', 'colonel', 'general']);
 
 // ─── Tables ───
@@ -239,6 +240,7 @@ export const equipmentOrders = pgTable('equipment_orders', {
   quantityOrdered: integer('quantity_ordered').notNull(),
   quantityFulfilled: integer('quantity_fulfilled').notNull().default(0),
   status: equipmentOrderStatusEnum('status').notNull().default('active'),
+  priority: equipmentOrderPriorityEnum('priority').notNull().default('standard'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index('equipment_orders_settlement_idx').on(table.gameId, table.settlementId),

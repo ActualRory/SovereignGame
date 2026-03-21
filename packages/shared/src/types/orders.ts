@@ -176,11 +176,20 @@ export interface UpgradeUnitOrder {
 
 // ── Equipment Production ──
 
+/**
+ * Production priority for an equipment order.
+ * - relaxed: ×0.75 throughput, ×0.75 input cost per turn
+ * - standard: ×1.0 (default)
+ * - rush:     ×1.33 throughput, ×1.25 input cost per turn
+ */
+export type EquipmentOrderPriority = 'relaxed' | 'standard' | 'rush';
+
 export interface PlaceEquipmentOrder {
   settlementId: string;
   /** The weapon or armour type to produce. */
   equipmentType: ResourceType;
   quantity: number;
+  priority: EquipmentOrderPriority;
 }
 
 export interface CancelEquipmentOrderOrder {

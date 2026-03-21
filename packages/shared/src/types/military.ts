@@ -223,5 +223,7 @@ export interface EquipmentOrder {
   quantityOrdered: number;
   quantityFulfilled: number;
   status: EquipmentOrderStatus;
+  /** Controls throughput/cost tradeoff. relaxed = slower+cheaper, rush = faster+pricier. */
+  priority: 'relaxed' | 'standard' | 'rush';
   createdAt: string;
 }

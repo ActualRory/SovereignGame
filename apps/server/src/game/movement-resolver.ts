@@ -80,7 +80,7 @@ export interface MovementResult {
 
 // ── Helpers ──
 
-const BASE_MOVEMENT_POINTS = 4;
+const BASE_MOVEMENT_POINTS = 3;
 
 function hashSeed(input: string): number {
   let hash = 0;
@@ -209,7 +209,9 @@ export function resolveMovementStepByStep(opts: {
         moveCost += RIVER_CROSSING_COST;
       }
 
-      if (wa.remainingMP < moveCost) { wa.stopped = true; continue; }
+      // Guarantee at least 1 hex of movement per turn even if cost exceeds MP
+      const hasMovedThisTurn = wa.remainingMP < BASE_MOVEMENT_POINTS;
+      if (wa.remainingMP < moveCost && hasMovedThisTurn) { wa.stopped = true; continue; }
 
       // Advance
       const fromQ = wa.currentQ;

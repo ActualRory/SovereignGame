@@ -59,7 +59,7 @@ export const TERRAIN: Record<TerrainType, TerrainStats> = {
     frontlineWidth: 4,
   },
   desert: {
-    movementCost: 3,
+    movementCost: 2,
     supply: 'very_low',
     supplyValue: 1,
     defenceBonus: 0,

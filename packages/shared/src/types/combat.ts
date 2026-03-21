@@ -74,6 +74,8 @@ export interface NavalCasualty {
   hullDamage: number;
   newHullPct: number;
   newState: string;
+  crewLost: number;
+  newCrewCounts: { rookie: number; capable: number; veteran: number };
 }
 
 export interface NavalLossSummary {
@@ -82,6 +84,11 @@ export interface NavalLossSummary {
   startHull: number;
   endHull: number;
   sunk: boolean;
+  startCrew: number;
+  endCrew: number;
+  endCrewCounts: { rookie: number; capable: number; veteran: number };
+  rookiesPromoted: number;
+  capablePromoted: number;
 }
 
 export interface NavalCombatRound {

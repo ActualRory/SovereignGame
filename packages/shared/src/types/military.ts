@@ -139,7 +139,8 @@ export interface Ship {
   hullCurrent: number;
   hullMax: number;
   state: ShipState;
-  veterancy: string;
+  /** Crew experience tiers. Weighted average reduces hitsOn during combat. */
+  crewCounts: TroopCounts;
   xp: number;
 }
 

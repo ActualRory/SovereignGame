@@ -626,7 +626,7 @@ export interface NavalShipInput {
   hullCurrent: number;
   hullMax: number;
   state: ShipState;
-  veterancy: string;
+  crewCounts: { rookie: number; capable: number; veteran: number };
   xp: number;
 }
 
@@ -636,16 +636,28 @@ interface CombatShip {
   hullCurrent: number;
   hullMax: number;
   state: ShipState;
-  veterancy: string;
+  crewCounts: { rookie: number; capable: number; veteran: number };
   xp: number;
   startHull: number;
+  startCrewCounts: { rookie: number; capable: number; veteran: number };
 }
+
+/** Crew per net hit taken in naval combat. */
+const CREW_LOSS_PER_HIT = 2;
 
 export function resolveNavalCombat(input: NavalCombatInput): NavalCombatResult {
   const rng = mulberry32(input.seed);
 
-  const attackers: CombatShip[] = input.attacker.ships.filter(s => s.state !== 'sunk').map(s => ({ ...s, startHull: s.hullCurrent }));
-  const defenders: CombatShip[] = input.defender.ships.filter(s => s.state !== 'sunk').map(s => ({ ...s, startHull: s.hullCurrent }));
+  const attackers: CombatShip[] = input.attacker.ships.filter(s => s.state !== 'sunk').map(s => ({
+    ...s,
+    startHull: s.hullCurrent,
+    startCrewCounts: { ...s.crewCounts },
+  }));
+  const defenders: CombatShip[] = input.defender.ships.filter(s => s.state !== 'sunk').map(s => ({
+    ...s,
+    startHull: s.hullCurrent,
+    startCrewCounts: { ...s.crewCounts },
+  }));
 
   const rounds: NavalCombatRound[] = [];
 
@@ -682,13 +694,30 @@ export function resolveNavalCombat(input: NavalCombatInput): NavalCombatResult {
   else if (defAlive.length === 0) winner = 'attacker';
   else winner = 'draw';
 
+  // Post-battle crew promotions
+  applyNavalCrewPromotions(attackers);
+  applyNavalCrewPromotions(defenders);
+
+  const buildLossSummary = (ships: CombatShip[]): NavalLossSummary[] =>
+    ships.map(s => {
+      const startCrew = s.startCrewCounts.rookie + s.startCrewCounts.capable + s.startCrewCounts.veteran;
+      const endCrew = s.crewCounts.rookie + s.crewCounts.capable + s.crewCounts.veteran;
+      return {
+        shipId: s.id, shipType: s.type,
+        startHull: s.startHull, endHull: s.hullCurrent, sunk: s.hullCurrent <= 0,
+        startCrew, endCrew, endCrewCounts: { ...s.crewCounts },
+        rookiesPromoted: Math.floor(s.startCrewCounts.rookie * COMBAT_PROMOTION_RATE.rookieToCapable),
+        capablePromoted: Math.floor(s.startCrewCounts.capable * COMBAT_PROMOTION_RATE.capableToVeteran),
+      };
+    });
+
   return {
     id: input.id, seed: input.seed,
     attackerFleetId: input.attacker.fleetId,
     defenderFleetId: input.defender.fleetId,
     winner, rounds,
-    attackerLosses: attackers.map(s => ({ shipId: s.id, shipType: s.type, startHull: s.startHull, endHull: s.hullCurrent, sunk: s.hullCurrent <= 0 })),
-    defenderLosses: defenders.map(s => ({ shipId: s.id, shipType: s.type, startHull: s.startHull, endHull: s.hullCurrent, sunk: s.hullCurrent <= 0 })),
+    attackerLosses: buildLossSummary(attackers),
+    defenderLosses: buildLossSummary(defenders),
   };
 }
 
@@ -702,7 +731,9 @@ function resolveNavalFire(ships: CombatShip[], commandRating: number, hasModernD
     const multiplier = hullPct > 0.5 ? 1.0 : hullPct > 0.25 ? 0.6 : 0.3;
     const numDice = Math.max(1, Math.round(stats.fire * multiplier));
     const bonus = (commandRating * COMMAND_BONUS_PER_POINT) + (hasModernDoctrine ? MODERN_DOCTRINE_BONUS : 0);
-    const threshold = stats.hitsOn;
+    // Experienced crew aim better — weighted vet modifier reduces hitsOn
+    const vetMod = getWeightedVeterancyModifier(ship.crewCounts.rookie, ship.crewCounts.capable, ship.crewCounts.veteran);
+    const threshold = Math.max(2, stats.hitsOn - Math.floor(vetMod));
     const dice: number[] = [];
     let successes = 0;
     for (let i = 0; i < numDice; i++) {
@@ -726,6 +757,33 @@ function applyNavalDamage(totalDamage: number, targets: CombatShip[], casualties
     ship.hullCurrent = Math.max(0, ship.hullCurrent - hullLoss);
     const hullPct = ship.hullCurrent / ship.hullMax;
     ship.state = hullPct <= 0 ? 'sunk' : hullPct <= 0.25 ? 'crippled' : hullPct <= 0.5 ? 'damaged' : 'intact';
-    casualties.push({ shipId: ship.id, side, hullDamage: hullLoss, newHullPct: Math.round(hullPct * 100), newState: ship.state });
+
+    // Crew casualties — rookies lost first, then capable, then veteran
+    const crewLost = hullLoss * CREW_LOSS_PER_HIT;
+    let remaining = crewLost;
+    const rookieLoss = Math.min(ship.crewCounts.rookie, remaining);
+    ship.crewCounts.rookie -= rookieLoss;
+    remaining -= rookieLoss;
+    const capableLoss = Math.min(ship.crewCounts.capable, remaining);
+    ship.crewCounts.capable -= capableLoss;
+    remaining -= capableLoss;
+    ship.crewCounts.veteran = Math.max(0, ship.crewCounts.veteran - remaining);
+
+    casualties.push({
+      shipId: ship.id, side,
+      hullDamage: hullLoss, newHullPct: Math.round(hullPct * 100), newState: ship.state,
+      crewLost, newCrewCounts: { ...ship.crewCounts },
+    });
+  }
+}
+
+function applyNavalCrewPromotions(ships: CombatShip[]) {
+  for (const ship of ships) {
+    if (ship.hullCurrent <= 0) continue;
+    const promoted = Math.floor(ship.crewCounts.rookie * COMBAT_PROMOTION_RATE.rookieToCapable);
+    const promoted2 = Math.floor(ship.crewCounts.capable * COMBAT_PROMOTION_RATE.capableToVeteran);
+    ship.crewCounts.rookie -= promoted;
+    ship.crewCounts.capable += promoted - promoted2;
+    ship.crewCounts.veteran += promoted2;
   }
 }

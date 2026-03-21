@@ -13,7 +13,6 @@ export const settlementTierEnum = pgEnum('settlement_tier', [
 ]);
 export const unitStateEnum = pgEnum('unit_state', ['full', 'depleted', 'broken', 'destroyed']);
 export const shipStateEnum = pgEnum('ship_state', ['intact', 'damaged', 'crippled', 'sunk']);
-export const veterancyEnum = pgEnum('veterancy', ['fresh', 'regular', 'veteran', 'elite', 'legend']);
 export const unitPositionEnum = pgEnum('unit_position', ['frontline', 'backline', 'flank']);
 export const relationTypeEnum = pgEnum('relation_type', [
   'neutral', 'nap', 'alliance', 'military_union', 'war', 'vassal',
@@ -179,7 +178,7 @@ export const ships = pgTable('ships', {
   hullCurrent: integer('hull_current').notNull(),
   hullMax: integer('hull_max').notNull(),
   state: shipStateEnum('state').notNull().default('intact'),
-  veterancy: veterancyEnum('veterancy').notNull().default('fresh'),
+  crewCounts: jsonb('crew_counts').notNull().$type<{ rookie: number; capable: number; veteran: number }>(),
   xp: integer('xp').notNull().default(0),
 });
 

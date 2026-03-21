@@ -14,11 +14,30 @@ Browser-based multiplayer turn-based strategy game for 4-8 friends (EU4/Victoria
 - **Server** (`apps/server`): Node.js + Express, Socket.IO, Drizzle ORM + PostgreSQL, BullMQ + Redis
 - **Client** (`apps/client`): React 18 + Vite, PixiJS 8 (hex map), Zustand, Socket.IO client
 
-## Running
-```bash
-docker run -d --name kingdoms-pg -p 5432:5432 -e POSTGRES_PASSWORD=kingdoms -e POSTGRES_DB=kingdoms postgres:16
-docker run -d --name kingdoms-redis -p 6379:6379 redis:7
+## Deployment
+The server is deployed on an Ubuntu server at `rule.tastethevideogame.win` via Docker Compose.
+- **Files**: `docker-compose.yml`, `Dockerfile.server`, `.dockerignore`
+- **Services**: server (Node/tsx), PostgreSQL 16, Redis 7
+- **Keep `docker-compose.yml` and `Dockerfile.server` up to date** when adding dependencies, env vars, or services.
+- The server runs with `tsx` (not compiled `tsc`) because `turn-resolver.ts` has outstanding type errors from the military rework.
 
+### Deploy (on Ubuntu server)
+```bash
+cd ~/kingdoms-game && git pull
+docker compose up -d --build
+# First time only:
+docker compose exec server npx drizzle-kit push
+docker compose exec server npx tsx apps/server/src/db/seed.ts
+```
+
+### Local dev (client only, pointing at remote server)
+```bash
+VITE_SERVER_URL=http://rule.tastethevideogame.win:3000 pnpm dev:client
+```
+
+### Local dev (full stack, requires local Docker)
+```bash
+docker compose up -d postgres redis
 pnpm install && cp .env.example .env
 cd apps/server && npx drizzle-kit push && npx tsx src/db/seed.ts && cd ../..
 pnpm dev  # server :3000, client :5173

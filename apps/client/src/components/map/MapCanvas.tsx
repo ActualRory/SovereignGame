@@ -1,18 +1,21 @@
 import { useRef, useEffect } from 'react';
-import { Application, Container, Graphics } from 'pixi.js';
+import { Application, Container, Graphics, Sprite } from 'pixi.js';
 import { useStore } from '../../store/index.js';
 import {
   hexToPixel, hexCorners, roundHex, pixelToHex, HEX_SIZE,
-  TERRAIN_COLORS, TERRAIN_COLORS_SELECTED,
+  TERRAIN_COLORS, HEX_GRID_COLOR, HEX_GRID_ALPHA, DIR_EDGE_INDEX,
 } from './hex-layout.js';
-import { findPath, hexKey, type HexCoord, type TerrainType, type HexDirection } from '@kingdoms/shared';
+import { findPath, hexKey, hexNeighbor, ALL_DIRECTIONS, type HexCoord, type TerrainType, type HexDirection } from '@kingdoms/shared';
+import { generateParchmentTexture, type HexData } from './parchment-generator.js';
+import { generateTerrainTextures, terrainVariant, terrainRotation, clearTerrainTextures } from './terrain-symbols.js';
+import { wobblyLine, hexSeed } from './wobbly-line.js';
+import { drawSettlement, drawArmy, drawMoveTargetIndicator } from './map-icons.js';
+import { applyNoiseOverlay } from './noise-overlay.js';
 
 /**
- * PixiJS hex map renderer.
- * Renders terrain-colored hexagons with fog of war, rivers,
- * settlement markers, army icons. Supports pan/zoom/click.
- *
- * Right-click opens a context menu. Left-click selects hex / picks move target.
+ * PixiJS hex map renderer — cartographic / old-map style.
+ * Renders a procedural parchment background with terrain symbol stamps,
+ * wobbly hand-drawn rivers and borders, and cartographic icons.
  */
 export function MapCanvas() {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -20,6 +23,10 @@ export function MapCanvas() {
   const worldRef = useRef<Container | null>(null);
   const hexBoundsRef = useRef<{ minX: number; maxX: number; minY: number; maxY: number } | null>(null);
   const hasCenteredRef = useRef(false);
+
+  // Layer refs for split static/dynamic rendering
+  const staticLayersRef = useRef<Container | null>(null);
+  const dynamicLayersRef = useRef<Container | null>(null);
 
   const hexes = useStore(s => s.hexes);
   const settlements = useStore(s => s.settlements);
@@ -45,7 +52,7 @@ export function MapCanvas() {
   const isSelectingMoveTargetRef = useRef(isSelectingMoveTarget);
   isSelectingMoveTargetRef.current = isSelectingMoveTarget;
 
-  // Initialize PixiJS application
+  // ── Initialize PixiJS application ──
   useEffect(() => {
     if (!canvasRef.current || appRef.current) return;
 
@@ -56,7 +63,7 @@ export function MapCanvas() {
       const app = new Application();
       await app.init({
         resizeTo: container,
-        background: 0x1a1410,
+        background: 0x2C2418,
         antialias: true,
       });
 
@@ -72,10 +79,11 @@ export function MapCanvas() {
       app.stage.addChild(world);
       worldRef.current = world;
 
-      // Start at container center; initial centering on capital happens via the
-      // settlements effect below once data arrives.
       world.x = container.clientWidth / 2;
       world.y = container.clientHeight / 2;
+
+      // Apply paper grain noise overlay
+      applyNoiseOverlay('.game-map-area');
 
       // ── Pan & Zoom ──
       let isDragging = false;
@@ -87,7 +95,6 @@ export function MapCanvas() {
         if (!bounds) return { x: nx, y: ny };
         const w = container.clientWidth;
         const h = container.clientHeight;
-        // Ensure at least some of the map is always visible
         const cx = Math.max(-bounds.maxX * scale, Math.min(w - bounds.minX * scale, nx));
         const cy = Math.max(-bounds.maxY * scale, Math.min(h - bounds.minY * scale, ny));
         return { x: cx, y: cy };
@@ -120,7 +127,6 @@ export function MapCanvas() {
           const hex = roundHex(frac.q, frac.r);
 
           if (e.button === 2) {
-            // Right-click: open context menu
             const state = useStore.getState();
             state.setMapContextMenu({
               x: e.clientX,
@@ -128,15 +134,11 @@ export function MapCanvas() {
               hex,
             });
           } else {
-            // Left-click
             if (isSelectingMoveTargetRef.current) {
-              // We're in "select move target" mode
               handleMoveTarget(hex);
             } else {
-              // Normal: select hex and auto-select army
               setSelectedHexRef.current(hex);
               autoSelectArmy(hex);
-              // If detail panel is open, update it to show the newly clicked hex
               const state2 = useStore.getState();
               if (state2.detailPanelHex) {
                 state2.setDetailPanelHex(hex);
@@ -191,7 +193,6 @@ export function MapCanvas() {
           return;
         }
 
-        // Build hex data map for pathfinding
         const hexData = new Map<string, { terrain: TerrainType; passable: boolean }>();
         const riverEdges = new Map<string, HexDirection[]>();
         for (const h of state.hexes) {
@@ -234,15 +235,18 @@ export function MapCanvas() {
 
     return () => {
       destroyed = true;
+      clearTerrainTextures();
       if (appRef.current) {
         appRef.current.destroy(true);
         appRef.current = null;
         worldRef.current = null;
+        staticLayersRef.current = null;
+        dynamicLayersRef.current = null;
       }
     };
   }, []);
 
-  // Update hex bounds whenever the hex grid changes
+  // ── Update hex bounds ──
   useEffect(() => {
     if (hexes.length === 0) { hexBoundsRef.current = null; return; }
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -258,7 +262,7 @@ export function MapCanvas() {
     hexBoundsRef.current = { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad };
   }, [hexes]);
 
-  // Center on the player's capital once, as soon as both the canvas and settlements are ready
+  // ── Center on capital ──
   useEffect(() => {
     if (hasCenteredRef.current) return;
     if (!worldRef.current || !appRef.current) return;
@@ -276,7 +280,7 @@ export function MapCanvas() {
     hasCenteredRef.current = true;
   }, [settlements, player]);
 
-  // Pan to a hex when requested (e.g. from Atlas tab click-to-jump)
+  // ── Pan to hex ──
   useEffect(() => {
     if (!panToHex || !worldRef.current || !appRef.current) return;
     const world = worldRef.current;
@@ -285,24 +289,190 @@ export function MapCanvas() {
     world.x = app.screen.width / 2 - pos.x * world.scale.x;
     world.y = app.screen.height / 2 - pos.y * world.scale.y;
     setPanToHex(null);
-    // Close the tab overlay so the map is visible
     setActiveTab(null);
   }, [panToHex, setPanToHex, setActiveTab]);
 
-  // Draw hexes whenever data or selection changes
+  // ═══════════════════════════════════════════════════════════
+  // STATIC LAYERS: parchment, terrain symbols, rivers, borders, fog, icons
+  // Redrawn when game data changes (not on selection changes)
+  // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     const world = worldRef.current;
-    if (!world) return;
+    const app = appRef.current;
+    if (!world || !app) return;
 
-    world.removeChildren();
+    // Remove old static layers
+    if (staticLayersRef.current) {
+      world.removeChild(staticLayersRef.current);
+      staticLayersRef.current.destroy({ children: true });
+    }
+
+    const staticRoot = new Container();
+    staticLayersRef.current = staticRoot;
+    // Insert static layers below dynamic layers
+    if (dynamicLayersRef.current) {
+      const dynIdx = world.getChildIndex(dynamicLayersRef.current);
+      world.addChildAt(staticRoot, dynIdx);
+    } else {
+      world.addChild(staticRoot);
+    }
+
+    if (hexes.length === 0) {
+      renderDemoMap(staticRoot);
+      return;
+    }
 
     const corners = hexCorners();
+    const bounds = hexBoundsRef.current;
 
+    // ── Layer 0: Parchment background ──
+    const parchmentLayer = new Container();
+    staticRoot.addChild(parchmentLayer);
+
+    if (bounds) {
+      const hexData: HexData[] = hexes.map((h: any) => ({
+        q: h.q, r: h.r, terrain: h.terrain,
+      }));
+      const { texture, originX, originY } = generateParchmentTexture(hexData, bounds);
+      const parchmentSprite = new Sprite(texture);
+      parchmentSprite.x = originX;
+      parchmentSprite.y = originY;
+      parchmentLayer.addChild(parchmentSprite);
+    }
+
+    // ── Layer 1: Hex grid outlines (very faint) ──
+    const gridLayer = new Graphics();
+    staticRoot.addChild(gridLayer);
+
+    for (const hex of hexes) {
+      const h = hex as any;
+      const pos = hexToPixel(h.q, h.r);
+      const offsetCorners = corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y }));
+      gridLayer.poly(offsetCorners);
+      gridLayer.stroke({ color: HEX_GRID_COLOR, width: 0.7, alpha: HEX_GRID_ALPHA });
+    }
+
+    // ── Layer 2: Terrain symbol stamps ──
     const terrainLayer = new Container();
-    const borderLayer = new Container();
-    const riverLayer = new Container();
-    const iconLayer = new Container();
-    world.addChild(terrainLayer, borderLayer, riverLayer, iconLayer);
+    staticRoot.addChild(terrainLayer);
+
+    const terrainTextures = generateTerrainTextures(app.renderer);
+
+    for (const hex of hexes) {
+      const h = hex as any;
+      const fogState = h.fogState ?? 'full_vision';
+      if (fogState === 'undiscovered') continue; // no symbols for undiscovered
+
+      const variants = terrainTextures[h.terrain];
+      if (!variants || variants.length === 0) continue;
+
+      const vi = terrainVariant(h.q, h.r);
+      const tex = variants[vi % variants.length];
+      const pos = hexToPixel(h.q, h.r);
+
+      const stamp = new Sprite(tex);
+      stamp.anchor.set(0.5);
+      stamp.x = pos.x;
+      stamp.y = pos.y;
+      stamp.rotation = terrainRotation(h.q, h.r);
+      stamp.alpha = fogState === 'soft_fog' ? 0.35 : 0.85;
+      terrainLayer.addChild(stamp);
+    }
+
+    // ── Layer 3: Rivers (wobbly hand-drawn) ──
+    const riverGraphics = new Graphics();
+    staticRoot.addChild(riverGraphics);
+
+    for (const hex of hexes) {
+      const h = hex as any;
+      if (!h.riverEdges?.length) continue;
+
+      const pos = hexToPixel(h.q, h.r);
+      const offsetCorners = corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y }));
+
+      for (const edge of h.riverEdges as string[]) {
+        const idx = DIR_EDGE_INDEX[edge];
+        if (idx === undefined) continue;
+        const c1 = offsetCorners[idx];
+        const c2 = offsetCorners[(idx + 1) % 6];
+        const seed = hexSeed(h.q, h.r, idx);
+
+        // Primary river stroke
+        wobblyLine(riverGraphics, c1, c2, seed, 2.5);
+        riverGraphics.stroke({ color: 0x5A8AAA, width: 4, alpha: 0.8 });
+
+        // Highlight stroke (lighter, thinner)
+        wobblyLine(riverGraphics, c1, c2, seed + 1, 1.5);
+        riverGraphics.stroke({ color: 0x7AB0CC, width: 1.5, alpha: 0.5 });
+      }
+    }
+
+    // ── Layer 4: Political borders (wobbly, edge-based) ──
+    const borderGraphics = new Graphics();
+    staticRoot.addChild(borderGraphics);
+
+    // Build owner lookup
+    const ownerMap = new Map<string, string>();
+    for (const hex of hexes) {
+      const h = hex as any;
+      if (h.ownerId) {
+        ownerMap.set(hexKey({ q: h.q, r: h.r }), h.ownerId);
+      }
+    }
+
+    const playerColors = new Map<string, number>();
+    for (const p of players) {
+      const color = (p as any).color;
+      playerColors.set((p as any).id, typeof color === 'string' ? parseInt(color.replace('#', ''), 16) : color);
+    }
+
+    for (const hex of hexes) {
+      const h = hex as any;
+      if (!h.ownerId) continue;
+
+      const pos = hexToPixel(h.q, h.r);
+      const offsetCorners = corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y }));
+      const borderColor = playerColors.get(h.ownerId) ?? 0x3d3225;
+
+      for (let di = 0; di < ALL_DIRECTIONS.length; di++) {
+        const dir = ALL_DIRECTIONS[di];
+        const neighbor = hexNeighbor({ q: h.q, r: h.r }, dir);
+        const neighborOwner = ownerMap.get(hexKey(neighbor));
+
+        // Draw border edge if neighbor has different owner (or no owner)
+        if (neighborOwner !== h.ownerId) {
+          const c1 = offsetCorners[di];
+          const c2 = offsetCorners[(di + 1) % 6];
+          const seed = hexSeed(h.q, h.r, di + 100);
+
+          wobblyLine(borderGraphics, c1, c2, seed, 2);
+          borderGraphics.stroke({ color: borderColor, width: 2.5, alpha: 0.7 });
+        }
+      }
+    }
+
+    // ── Layer 5: Fog of war overlay (sepia washes) ──
+    const fogGraphics = new Graphics();
+    staticRoot.addChild(fogGraphics);
+
+    for (const hex of hexes) {
+      const h = hex as any;
+      const fogState = h.fogState ?? 'full_vision';
+      if (fogState === 'full_vision') continue;
+
+      const pos = hexToPixel(h.q, h.r);
+      const offsetCorners = corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y }));
+
+      if (fogState === 'soft_fog') {
+        // Sepia wash instead of black overlay
+        fogGraphics.poly(offsetCorners);
+        fogGraphics.fill({ color: 0xA08C6E, alpha: 0.45 });
+      }
+    }
+
+    // ── Layer 6: Settlement and army icons ──
+    const iconGraphics = new Graphics();
+    staticRoot.addChild(iconGraphics);
 
     const settlementByHex = new Map<string, any>();
     for (const s of settlements) {
@@ -318,96 +488,73 @@ export function MapCanvas() {
       armiesByHex.set(key, list);
     }
 
-    const playerColors = new Map<string, string>();
-    for (const p of players) {
-      playerColors.set((p as any).id, (p as any).color);
-    }
-
     for (const hex of hexes) {
       const h = hex as any;
-      const pos = hexToPixel(h.q, h.r);
       const fogState = h.fogState ?? 'full_vision';
-      const isSelected = selectedHex && selectedHex.q === h.q && selectedHex.r === h.r;
-      const colorMap = isSelected ? TERRAIN_COLORS_SELECTED : TERRAIN_COLORS;
-      const fillColor = colorMap[h.terrain] ?? 0xCCCCCC;
-      const offsetCorners = corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y }));
-
-      // Layer 1: Terrain fill
-      const tg = new Graphics();
-      tg.poly(offsetCorners);
-      tg.fill({ color: fillColor, alpha: fogState === 'soft_fog' ? 0.5 : 1.0 });
-      tg.stroke({ color: 0x3d3225, width: 1 });
-
-      if (fogState === 'soft_fog') {
-        tg.poly(offsetCorners);
-        tg.fill({ color: 0x000000, alpha: 0.4 });
-      }
-      terrainLayer.addChild(tg);
-
-      // Layer 2: Owner borders
-      if (h.ownerId) {
-        const bg = new Graphics();
-        const ownerColor = playerColors.get(h.ownerId);
-        const borderColor = ownerColor ? parseInt(ownerColor.replace('#', ''), 16) : 0x3d3225;
-        bg.poly(offsetCorners);
-        bg.stroke({ color: borderColor, width: 2.5, alpha: 0.8 });
-        borderLayer.addChild(bg);
-      }
-
-      // Selection highlight
-      if (isSelected) {
-        const sg = new Graphics();
-        sg.poly(offsetCorners);
-        sg.stroke({ color: 0xFFD700, width: 3 });
-        borderLayer.addChild(sg);
-      }
-
-      // Layer 3: River edges
-      if (h.riverEdges?.length > 0) {
-        const rg = new Graphics();
-        const dirIndex: Record<string, number> = { ne: 0, e: 1, se: 2, sw: 3, w: 4, nw: 5 };
-        for (const edge of h.riverEdges as string[]) {
-          const idx = dirIndex[edge];
-          if (idx === undefined) continue;
-          const c1 = offsetCorners[idx];
-          const c2 = offsetCorners[(idx + 1) % 6];
-          rg.moveTo(c1.x, c1.y);
-          rg.lineTo(c2.x, c2.y);
-          rg.stroke({ color: 0x4488CC, width: 3.5 });
-        }
-        riverLayer.addChild(rg);
-      }
-
-      // Layer 4: Settlement + army icons
+      const pos = hexToPixel(h.q, h.r);
       const hexK = `${h.q},${h.r}`;
+
+      // Settlements
       const settlement = settlementByHex.get(hexK);
       if (settlement) {
-        const ig = new Graphics();
-        const tierSize: Record<string, number> = {
-          hamlet: 6, village: 8, town: 10, city: 13, metropolis: 16,
-        };
-        const size = tierSize[settlement.tier] ?? 8;
-        ig.rect(pos.x - size / 2, pos.y - size / 2 - 4, size, size);
-        ig.fill({ color: settlement.isCapital ? 0xd4a017 : 0xA0673A });
-        ig.stroke({ color: 0x1a1410, width: 1 });
-        iconLayer.addChild(ig);
+        drawSettlement(iconGraphics, pos.x, pos.y, settlement.tier, settlement.isCapital);
       }
 
-      const hexArmies = armiesByHex.get(hexK);
-      if (hexArmies) {
-        for (let i = 0; i < hexArmies.length; i++) {
-          const army = hexArmies[i];
-          const ag = new Graphics();
-          const ax = pos.x + (i * 10) - 5;
-          const ay = pos.y + 8;
-          const ownerColor = playerColors.get(army.ownerId);
-          const color = ownerColor ? parseInt(ownerColor.replace('#', ''), 16) : 0x666666;
-          ag.circle(ax, ay, 5);
-          ag.fill({ color });
-          ag.stroke({ color: 0x1a1410, width: 1 });
-          iconLayer.addChild(ag);
+      // Armies (skip in fog)
+      if (fogState === 'full_vision') {
+        const hexArmies = armiesByHex.get(hexK);
+        if (hexArmies) {
+          for (let i = 0; i < hexArmies.length; i++) {
+            const army = hexArmies[i];
+            const ax = pos.x + (i * 14) - 5;
+            const ay = pos.y + 10;
+            const color = playerColors.get(army.ownerId) ?? 0x666666;
+            drawArmy(iconGraphics, ax, ay, color, false);
+          }
         }
       }
+    }
+  }, [hexes, settlements, armies, players]);
+
+  // ═══════════════════════════════════════════════════════════
+  // DYNAMIC LAYERS: selection highlight, movement paths, army highlights
+  // Redrawn on selection / order changes (cheap)
+  // ═══════════════════════════════════════════════════════════
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world) return;
+
+    // Remove old dynamic layers
+    if (dynamicLayersRef.current) {
+      world.removeChild(dynamicLayersRef.current);
+      dynamicLayersRef.current.destroy({ children: true });
+    }
+
+    const dynamicRoot = new Container();
+    dynamicLayersRef.current = dynamicRoot;
+    world.addChild(dynamicRoot); // always on top
+
+    if (hexes.length === 0) return;
+
+    const corners = hexCorners();
+    const dg = new Graphics();
+    dynamicRoot.addChild(dg);
+
+    const playerColors = new Map<string, number>();
+    for (const p of players) {
+      const color = (p as any).color;
+      playerColors.set((p as any).id, typeof color === 'string' ? parseInt(color.replace('#', ''), 16) : color);
+    }
+
+    // Selection highlight
+    if (selectedHex) {
+      const pos = hexToPixel(selectedHex.q, selectedHex.r);
+      const offsetCorners = corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y }));
+      dg.poly(offsetCorners);
+      dg.stroke({ color: 0xFFD700, width: 3, alpha: 0.9 });
+      // Subtle fill highlight
+      dg.poly(offsetCorners);
+      dg.fill({ color: 0xFFD700, alpha: 0.08 });
     }
 
     // Movement paths
@@ -415,86 +562,134 @@ export function MapCanvas() {
       const army = armies.find((a: any) => a.id === movement.armyId) as any;
       if (!army) continue;
 
-      const pg = new Graphics();
-      const ownerColor = playerColors.get(army.ownerId);
-      const pathColor = ownerColor ? parseInt(ownerColor.replace('#', ''), 16) : 0xFFFFFF;
-
+      const pathColor = playerColors.get(army.ownerId) ?? 0xFFFFFF;
       const startPos = hexToPixel(army.hexQ, army.hexR);
-      pg.moveTo(startPos.x, startPos.y);
 
+      // Draw dashed-style path line
+      dg.moveTo(startPos.x, startPos.y);
       for (const step of movement.path) {
         const stepPos = hexToPixel(step.q, step.r);
-        pg.lineTo(stepPos.x, stepPos.y);
+        dg.lineTo(stepPos.x, stepPos.y);
       }
-      pg.stroke({ color: pathColor, width: 3, alpha: 0.8 });
+      dg.stroke({ color: pathColor, width: 2.5, alpha: 0.7 });
 
+      // Destination marker
       if (movement.path.length > 0) {
         const dest = movement.path[movement.path.length - 1];
         const destPos = hexToPixel(dest.q, dest.r);
-        pg.circle(destPos.x, destPos.y, 6);
-        pg.stroke({ color: pathColor, width: 2 });
-        pg.fill({ color: pathColor, alpha: 0.3 });
+        dg.circle(destPos.x, destPos.y, 6);
+        dg.stroke({ color: pathColor, width: 2 });
+        dg.fill({ color: pathColor, alpha: 0.25 });
       }
-
-      iconLayer.addChild(pg);
     }
 
     // Selected army highlight
     if (selectedArmyId) {
       const selArmy = armies.find((a: any) => a.id === selectedArmyId) as any;
       if (selArmy) {
-        const sg = new Graphics();
         const pos = hexToPixel(selArmy.hexQ, selArmy.hexR);
-        sg.circle(pos.x, pos.y + 8, 8);
-        sg.stroke({ color: 0xFFD700, width: 2 });
-        iconLayer.addChild(sg);
+        const armiesByHex = armies.filter((a: any) => a.hexQ === selArmy.hexQ && a.hexR === selArmy.hexR);
+        const idx = armiesByHex.findIndex((a: any) => a.id === selectedArmyId);
+        const ax = pos.x + (idx * 14) - 5;
+        const ay = pos.y + 10;
+        dg.circle(ax + 2, ay - 1, 10);
+        dg.stroke({ color: 0xFFD700, width: 2, alpha: 0.8 });
       }
     }
 
-    // Move-target selection cursor (pulsing crosshair indicator on selected hex if in move-select mode)
+    // Move-target selection indicator
     if (isSelectingMoveTarget && selectedArmyId) {
-      // Highlight the army being moved more prominently
       const selArmy = armies.find((a: any) => a.id === selectedArmyId) as any;
       if (selArmy) {
-        const mg = new Graphics();
         const pos = hexToPixel(selArmy.hexQ, selArmy.hexR);
-        mg.circle(pos.x, pos.y + 8, 12);
-        mg.stroke({ color: 0xFF4444, width: 2, alpha: 0.6 });
-        iconLayer.addChild(mg);
+        const armiesByHex = armies.filter((a: any) => a.hexQ === selArmy.hexQ && a.hexR === selArmy.hexR);
+        const idx = armiesByHex.findIndex((a: any) => a.id === selectedArmyId);
+        const ax = pos.x + (idx * 14) - 5;
+        const ay = pos.y + 10;
+        drawMoveTargetIndicator(dg, ax, ay);
       }
     }
-
-    if (hexes.length === 0) {
-      renderDemoMap(terrainLayer, corners);
-    }
-  }, [hexes, settlements, armies, players, selectedHex, selectedArmyId, pendingOrders, isSelectingMoveTarget]);
+  }, [hexes, armies, players, selectedHex, selectedArmyId, pendingOrders, isSelectingMoveTarget]);
 
   return <div ref={canvasRef} style={{ width: '100%', height: '100%', cursor: isSelectingMoveTarget ? 'crosshair' : 'default' }} />;
 }
 
-/** Render a demo hex grid for testing before a real map is loaded. */
-function renderDemoMap(
-  world: Container,
-  corners: { x: number; y: number }[]
-) {
+/** Demo hex grid for testing when no server data is loaded. */
+function renderDemoMap(parent: Container) {
+  const corners = hexCorners();
   const terrains = ['plains', 'hills', 'forest', 'mountains', 'coast', 'marsh', 'desert'];
   const radius = 8;
 
+  // Generate parchment for demo
+  const demoHexes: HexData[] = [];
   for (let q = -radius; q <= radius; q++) {
     for (let r = -radius; r <= radius; r++) {
       const s = -q - r;
       if (Math.abs(s) > radius) continue;
-
-      const pos = hexToPixel(q, r);
       const terrain = terrains[Math.abs((q * 7 + r * 13) % terrains.length)];
-      const fillColor = TERRAIN_COLORS[terrain] ?? 0xCCCCCC;
+      demoHexes.push({ q, r, terrain });
+    }
+  }
 
-      const g = new Graphics();
+  // Compute bounds
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const h of demoHexes) {
+    const pos = hexToPixel(h.q, h.r);
+    if (pos.x < minX) minX = pos.x;
+    if (pos.x > maxX) maxX = pos.x;
+    if (pos.y < minY) minY = pos.y;
+    if (pos.y > maxY) maxY = pos.y;
+  }
+  const pad = HEX_SIZE * 3;
+  const bounds = { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad };
+
+  // Parchment
+  const { texture, originX, originY } = generateParchmentTexture(demoHexes, bounds);
+  const parchmentSprite = new Sprite(texture);
+  parchmentSprite.x = originX;
+  parchmentSprite.y = originY;
+  parent.addChild(parchmentSprite);
+
+  // Grid outlines
+  const gridG = new Graphics();
+  parent.addChild(gridG);
+  for (const h of demoHexes) {
+    const pos = hexToPixel(h.q, h.r);
+    const offsetCorners = corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y }));
+    gridG.poly(offsetCorners);
+    gridG.stroke({ color: HEX_GRID_COLOR, width: 0.7, alpha: HEX_GRID_ALPHA });
+  }
+
+  // Terrain symbols (use TERRAIN_COLORS as fallback if textures not ready)
+  const app = (parent.parent as any)?._appRef?.current;
+  if (app?.renderer) {
+    const terrainTextures = generateTerrainTextures(app.renderer);
+    const terrainContainer = new Container();
+    parent.addChild(terrainContainer);
+
+    for (const h of demoHexes) {
+      const variants = terrainTextures[h.terrain];
+      if (!variants?.length) continue;
+      const vi = terrainVariant(h.q, h.r);
+      const tex = variants[vi % variants.length];
+      const pos = hexToPixel(h.q, h.r);
+      const stamp = new Sprite(tex);
+      stamp.anchor.set(0.5);
+      stamp.x = pos.x;
+      stamp.y = pos.y;
+      stamp.rotation = terrainRotation(h.q, h.r);
+      stamp.alpha = 0.85;
+      terrainContainer.addChild(stamp);
+    }
+  } else {
+    // Fallback: flat colored hexes if renderer not available
+    const g = new Graphics();
+    parent.addChild(g);
+    for (const h of demoHexes) {
+      const pos = hexToPixel(h.q, h.r);
+      const fillColor = TERRAIN_COLORS[h.terrain] ?? 0xCCCCCC;
       g.poly(corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y })));
-      g.fill({ color: fillColor });
-      g.stroke({ color: 0x8b7355, width: 1 });
-
-      world.addChild(g);
+      g.fill({ color: fillColor, alpha: 0.3 });
     }
   }
 }

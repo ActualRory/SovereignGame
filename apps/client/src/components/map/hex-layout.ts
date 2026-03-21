@@ -88,3 +88,12 @@ export const TERRAIN_COLORS_SELECTED: Record<string, number> = {
   marsh:     0x5A7A55,
   desert:    0xAA9A75,
 };
+
+/** Thin hex grid outline color for the cartographic map style. */
+export const HEX_GRID_COLOR = 0x3d3225;
+export const HEX_GRID_ALPHA = 0.25;
+
+/** Direction-to-corner-index mapping for flat-top hexes. */
+export const DIR_EDGE_INDEX: Record<string, number> = {
+  ne: 0, e: 1, se: 2, sw: 3, w: 4, nw: 5,
+};

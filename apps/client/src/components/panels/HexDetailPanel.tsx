@@ -160,6 +160,9 @@ export function HexDetailPanel() {
                 {(settlement as any).tier}
               </span>
             </div>
+            {isOwn && (
+              <SettlementNameEditor slug={slug!} settlement={settlement as any} />
+            )}
             {fogState === 'full_vision' && (
               <>
                 <div className="settlement-stats">
@@ -317,6 +320,59 @@ function HexNameEditor({ slug, hex }: { slug: string; hex: any }) {
         onClick={() => { setEditing(true); setNameValue(hex.customName ?? ''); }}
       >
         {hex.customName ? 'Rename' : 'Name this land'}
+      </button>
+    </div>
+  );
+}
+
+/* ─── Settlement Name Editor ─── */
+
+function SettlementNameEditor({ slug, settlement }: { slug: string; settlement: any }) {
+  const [editing, setEditing] = useState(false);
+  const [nameValue, setNameValue] = useState(settlement.name ?? '');
+  const setGameState = useStore(s => s.setGameState);
+  const settlements = useStore(s => s.settlements);
+
+  async function save() {
+    const trimmed = nameValue.trim();
+    if (!trimmed) { setEditing(false); return; }
+    setEditing(false);
+    const sessionToken = localStorage.getItem(`session:${slug}`);
+    await fetch(`/api/games/${slug}/settlement`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken ?? '' },
+      body: JSON.stringify({ settlementId: settlement.id, name: trimmed }),
+    });
+    // Optimistic update
+    setGameState({
+      settlements: settlements.map((s: any) => s.id === settlement.id ? { ...s, name: trimmed } : s),
+    });
+  }
+
+  if (editing) {
+    return (
+      <div style={{ marginTop: 4 }}>
+        <input
+          className="hex-name-input"
+          value={nameValue}
+          onChange={e => setNameValue(e.target.value)}
+          onBlur={save}
+          onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false); }}
+          placeholder="Settlement name..."
+          autoFocus
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button
+        className="btn btn-secondary hex-name-btn"
+        style={{ fontSize: 11, padding: '2px 8px' }}
+        onClick={() => { setEditing(true); setNameValue(settlement.name ?? ''); }}
+      >
+        Rename
       </button>
     </div>
   );

@@ -117,23 +117,6 @@ export function MapContextMenu() {
         </>
       )}
 
-      {/* Name hex — only if you own it */}
-      {isOwnHex && (
-        <>
-          <div className="map-context-divider" />
-          <button
-            className="map-context-item"
-            onClick={() => {
-              setDetailPanelHex(menu.hex);
-              setSelectedHex(menu.hex);
-              close(null);
-              // The detail panel will allow naming
-            }}
-          >
-            Name this land
-          </button>
-        </>
-      )}
     </div>
   );
 }

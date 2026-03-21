@@ -46,6 +46,8 @@ export function MapCanvas() {
   const movementLog = useStore(s => s.movementLog);
   const isAnimatingMovement = useStore(s => s.isAnimatingMovement);
   const setIsAnimatingMovement = useStore(s => s.setIsAnimatingMovement);
+  const turnJustResolved = useStore(s => s.turnJustResolved);
+  const setTurnJustResolved = useStore(s => s.setTurnJustResolved);
 
   const selectedHexRef = useRef(selectedHex);
   selectedHexRef.current = selectedHex;
@@ -467,29 +469,41 @@ export function MapCanvas() {
         isBorderEdge.push(neighborOwner !== h.ownerId);
       }
 
-      // Chain consecutive border edges into connected runs to eliminate corner gaps
-      let runStart = -1;
-      // Find a non-border edge to start scanning from (so we don't split a run)
+      // Chain consecutive border edges into connected runs to eliminate corner gaps.
+      // Find a non-border edge to start scanning from so we don't split a run across
+      // the wrap-around point. If all 6 are borders, scanStart stays 0 and we handle
+      // it as one full-perimeter run.
       let scanStart = 0;
+      let allBorder = true;
       for (let i = 0; i < 6; i++) {
-        if (!isBorderEdge[i]) { scanStart = i + 1; break; }
+        if (!isBorderEdge[i]) { scanStart = i + 1; allBorder = false; break; }
       }
 
-      for (let step = 0; step <= 6; step++) {
-        const di = (scanStart + step) % 6;
-        if (isBorderEdge[di]) {
-          if (runStart === -1) runStart = di;
-        } else {
-          if (runStart !== -1) {
-            // Draw connected run from runStart to di-1
-            drawBorderRun(borderGraphics, offsetCorners, isBorderEdge, runStart, di, h.q, h.r, borderColor);
-            runStart = -1;
+      if (allBorder) {
+        // Every edge is a border — draw full perimeter as one run
+        drawBorderRun(borderGraphics, offsetCorners, isBorderEdge, 0, 6, h.q, h.r, borderColor);
+      } else {
+        let runStart = -1;
+        for (let step = 0; step < 6; step++) {
+          const di = (scanStart + step) % 6;
+          if (isBorderEdge[di]) {
+            if (runStart === -1) runStart = di;
+          } else {
+            if (runStart !== -1) {
+              drawBorderRun(borderGraphics, offsetCorners, isBorderEdge, runStart, di, h.q, h.r, borderColor);
+              runStart = -1;
+            }
           }
         }
-      }
-      // Handle case where all 6 edges are borders (fully surrounded by non-owned)
-      if (runStart !== -1) {
-        drawBorderRun(borderGraphics, offsetCorners, isBorderEdge, runStart, runStart + 6, h.q, h.r, borderColor);
+        // Close any trailing run (count consecutive border edges from runStart)
+        if (runStart !== -1) {
+          let count = 0;
+          for (let s = 0; s < 6; s++) {
+            if (!isBorderEdge[(runStart + s) % 6]) break;
+            count++;
+          }
+          drawBorderRun(borderGraphics, offsetCorners, isBorderEdge, runStart, runStart + count, h.q, h.r, borderColor);
+        }
       }
     }
 
@@ -608,16 +622,15 @@ export function MapCanvas() {
 
   // ═══════════════════════════════════════════════════════════
   // MOVEMENT REPLAY ANIMATION
-  // Triggered when a new movementLog arrives after turn resolution
+  // Only triggered when turnJustResolved flag is set (from socket event),
+  // NOT on initial page load or refresh.
   // ═══════════════════════════════════════════════════════════
-  const prevMovementLogRef = useRef<Record<string, unknown> | null>(null);
-
   useEffect(() => {
     const world = worldRef.current;
-    if (!world || !movementLog) return;
-    // Only trigger on new movement logs, not on re-renders
-    if (movementLog === prevMovementLogRef.current) return;
-    prevMovementLogRef.current = movementLog;
+    if (!world || !movementLog || !turnJustResolved) return;
+
+    // Clear the flag immediately so it doesn't re-trigger
+    setTurnJustResolved(false);
 
     const log = movementLog as any;
     if (!log.ticks || log.ticks.length === 0) return;
@@ -634,7 +647,7 @@ export function MapCanvas() {
     animateMovement(world, log, playerColors).then(() => {
       setIsAnimatingMovement(false);
     });
-  }, [movementLog, players, setIsAnimatingMovement]);
+  }, [movementLog, turnJustResolved, players, setIsAnimatingMovement, setTurnJustResolved]);
 
   // ═══════════════════════════════════════════════════════════
   // DYNAMIC LAYERS: selection highlight, movement paths, army highlights

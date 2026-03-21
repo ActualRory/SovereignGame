@@ -49,6 +49,8 @@ export function GamePage() {
     const socket = connectToGame(gameId, sessionToken);
 
     socket.on('turn_resolved', (data: { turnNumber: number; events: any[]; gameOver?: boolean; winnerId?: string }) => {
+      // Signal that a turn just resolved so MapCanvas can play movement animation
+      useStore.getState().setTurnJustResolved(true);
       fetchState();
       // Reset pending orders for the new turn
       const state = useStore.getState();

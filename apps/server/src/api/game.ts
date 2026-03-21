@@ -519,3 +519,28 @@ gameRouter.patch('/:slug/hex', async (req, res) => {
 
   res.json({ success: true });
 });
+
+/** PATCH /api/games/:slug/settlement — Rename a settlement. */
+gameRouter.patch(':slug/settlement', async (req, res) => {
+  const { slug } = req.params;
+  const sessionToken = req.headers['x-session-token'] as string;
+  if (!sessionToken) { res.status(401).json({ error: 'Session token required' }); return; }
+
+  const [game] = await db.select().from(schema.games).where(eq(schema.games.slug, slug));
+  if (!game) { res.status(404).json({ error: 'Game not found' }); return; }
+
+  const [player] = await db.select().from(schema.players).where(eq(schema.players.sessionToken, sessionToken));
+  if (!player || player.gameId !== game.id) { res.status(403).json({ error: 'Not in this game' }); return; }
+
+  const { settlementId, name } = req.body as { settlementId: string; name: string };
+  if (!settlementId || !name?.trim()) { res.status(400).json({ error: 'settlementId and name required' }); return; }
+
+  const [settlement] = await db.select().from(schema.settlements).where(eq(schema.settlements.id, settlementId));
+  if (!settlement) { res.status(404).json({ error: 'Settlement not found' }); return; }
+  if (settlement.ownerId !== player.id) { res.status(403).json({ error: 'You do not own this settlement' }); return; }
+
+  await db.update(schema.settlements).set({ name: name.trim() })
+    .where(eq(schema.settlements.id, settlement.id));
+
+  res.json({ success: true });
+});

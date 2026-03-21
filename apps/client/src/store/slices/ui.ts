@@ -21,6 +21,8 @@ export interface UiSlice {
   panToHex: { q: number; r: number } | null;
   /** True while the movement replay animation is playing */
   isAnimatingMovement: boolean;
+  /** Set to true when a turn just resolved; cleared after animation plays or is skipped */
+  turnJustResolved: boolean;
   setActiveTab: (tab: TabId | null) => void;
   setSelectedHex: (hex: { q: number; r: number } | null) => void;
   setSelectedArmyId: (id: string | null) => void;
@@ -29,6 +31,7 @@ export interface UiSlice {
   setDetailPanelHex: (hex: { q: number; r: number } | null) => void;
   setPanToHex: (hex: { q: number; r: number } | null) => void;
   setIsAnimatingMovement: (v: boolean) => void;
+  setTurnJustResolved: (v: boolean) => void;
 }
 
 export const createUiSlice: StateCreator<UiSlice> = (set) => ({
@@ -40,6 +43,7 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   detailPanelHex: null,
   panToHex: null,
   isAnimatingMovement: false,
+  turnJustResolved: false,
   setActiveTab: (tab) => set((state) => ({
     activeTab: state.activeTab === tab ? null : tab,
   })),
@@ -50,4 +54,5 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   setDetailPanelHex: (hex) => set({ detailPanelHex: hex }),
   setPanToHex: (hex) => set({ panToHex: hex }),
   setIsAnimatingMovement: (v) => set({ isAnimatingMovement: v }),
+  setTurnJustResolved: (v) => set({ turnJustResolved: v }),
 });

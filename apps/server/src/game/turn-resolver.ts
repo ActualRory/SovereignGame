@@ -4,7 +4,7 @@
  * Phase 2 implements steps 1-5 + 13 (tax, production, upkeep, construction, research, pop growth).
  */
 
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { resolveMovementStepByStep } from './movement-resolver.js';
 import {
@@ -1397,7 +1397,10 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     .where(eq(schema.generals.gameId, gameId));
   const generalsMap = new Map(allGenerals.map(g => [g.id, { id: g.id, commandRating: g.commandRating }]));
 
-  const allUnits = await db.select().from(schema.units);
+  const armyIds = allMovementArmies.map(a => a.id);
+  const allUnits = armyIds.length > 0
+    ? await db.select().from(schema.units).where(inArray(schema.units.armyId, armyIds))
+    : [];
   const unitsByArmy = new Map<string, typeof allUnits>();
   for (const u of allUnits) {
     const list = unitsByArmy.get(u.armyId) ?? [];

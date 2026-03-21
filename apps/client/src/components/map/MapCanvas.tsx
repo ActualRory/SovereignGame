@@ -542,10 +542,12 @@ export function MapCanvas() {
       if (fogState === 'full_vision' && !isAnimatingMovement) {
         const hexArmies = armiesByHex.get(hexK);
         if (hexArmies) {
+          const hasSettlement = settlementByHex.has(hexK);
           for (let i = 0; i < hexArmies.length; i++) {
             const army = hexArmies[i];
-            const ax = pos.x + (i * 14) - 5;
-            const ay = pos.y + 10;
+            // Push armies further down and right when sharing hex with a settlement
+            const ax = pos.x + (i * 14) - 5 + (hasSettlement ? 10 : 0);
+            const ay = pos.y + (hasSettlement ? 18 : 10);
             const color = playerColors.get(army.ownerId) ?? 0x666666;
             drawArmy(iconGraphics, ax, ay, color, false);
           }

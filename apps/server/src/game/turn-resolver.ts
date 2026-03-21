@@ -1543,6 +1543,42 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       const siegeTerrain = (combatHex?.terrain ?? 'plains') as TerrainType;
       const siegeSeed = hashSeed(`${gameId}:${turnNumber}:siege:${army.id}`);
 
+      // Build CombatUnitInput from new military format (templates + troopCounts)
+      const allSiegeTemplates = await db.select().from(schema.unitTemplates)
+        .where(eq(schema.unitTemplates.gameId, gameId));
+      const allSiegeWeaponDesigns = await db.select().from(schema.weaponDesigns)
+        .where(eq(schema.weaponDesigns.gameId, gameId));
+
+      function buildSiegeCombatUnit(u: typeof activeAtkUnits[0]): CombatUnitInput | null {
+        const tmpl = allSiegeTemplates.find(t => t.id === u.templateId) as UnitTemplate | undefined;
+        if (!tmpl) return null;
+        const troopCounts = (u.troopCounts ?? { rookie: 0, capable: 0, veteran: 0 }) as TroopCounts;
+        const maxTroops = tmpl.isMounted
+          ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON
+          : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
+        const stats = computeUnitStats(tmpl as UnitTemplate, allSiegeWeaponDesigns as unknown as WeaponDesign[]);
+        return {
+          id: u.id,
+          templateId: tmpl.id,
+          name: u.name ?? tmpl.name,
+          position: (u.position ?? getDefaultPosition(tmpl.isMounted, tmpl.primary)) as UnitPosition,
+          state: u.state as UnitState,
+          xp: u.xp ?? 0,
+          troopCounts,
+          maxTroops,
+          fire: stats.fire,
+          shock: stats.shock,
+          defence: stats.defence,
+          morale: stats.morale,
+          armour: stats.armour,
+          ap: stats.ap,
+          hitsOn: stats.hitsOn,
+        };
+      }
+
+      const atkCombatUnits = activeAtkUnits.map(buildSiegeCombatUnit).filter((u): u is CombatUnitInput => u !== null);
+      const defCombatUnits = defenderUnits.map(buildSiegeCombatUnit).filter((u): u is CombatUnitInput => u !== null);
+
       const siegeInput: CombatInput = {
         id: `siege-${turnNumber}-${army.id}`,
         seed: siegeSeed,
@@ -1551,28 +1587,12 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         attacker: {
           armyId: army.id,
           commandRating: atkGeneral?.commandRating ?? 0,
-          units: activeAtkUnits.map(u => ({
-            id: u.id,
-            type: u.type as UnitType,
-            position: (u.position ?? 'frontline') as UnitPosition,
-            strengthPct: u.strengthPct,
-            state: u.state as UnitState,
-            veterancy: (u.veterancy ?? 'fresh') as Veterancy,
-            xp: u.xp ?? 0,
-          })),
+          units: atkCombatUnits,
         },
         defender: {
           armyId: defArmy?.id ?? 'garrison',
           commandRating: defGeneral?.commandRating ?? 0,
-          units: defenderUnits.map(u => ({
-            id: u.id,
-            type: u.type as UnitType,
-            position: (u.position ?? 'frontline') as UnitPosition,
-            strengthPct: u.strengthPct,
-            state: u.state as UnitState,
-            veterancy: (u.veterancy ?? 'fresh') as Veterancy,
-            xp: u.xp ?? 0,
-          })),
+          units: defCombatUnits,
         },
       };
 
@@ -1607,12 +1627,21 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
 
       // Apply casualties
       for (const loss of [...siegeResult.attackerLosses, ...siegeResult.defenderLosses]) {
+        const tmpl = allSiegeTemplates.find(t => t.id === loss.templateId) as UnitTemplate | undefined;
+        const maxTroops = tmpl
+          ? (tmpl.isMounted ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON : tmpl.companiesOrSquadrons * MEN_PER_COMPANY)
+          : 100;
+        const pct = maxTroops > 0 ? loss.endTroops / maxTroops : 0;
         const newState = loss.destroyed ? 'destroyed'
-          : loss.endStrength < 40 ? 'broken'
-          : loss.endStrength < 60 ? 'depleted'
+          : pct < 0.4 ? 'broken'
+          : pct < 0.6 ? 'depleted'
           : 'full';
         await db.update(schema.units)
-          .set({ strengthPct: Math.max(0, Math.round(loss.endStrength)), state: newState })
+          .set({
+            troopCounts: loss.endTroopCounts,
+            state: newState,
+            xp: loss.xpGained,
+          })
           .where(eq(schema.units.id, loss.unitId));
       }
 

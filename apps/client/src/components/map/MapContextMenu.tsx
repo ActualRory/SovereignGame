@@ -3,7 +3,7 @@ import { useStore } from '../../store/index.js';
 
 /**
  * Context menu that appears on right-clicking the hex map.
- * Shows contextual options: Details, Orders → Move, Name Hex, etc.
+ * Shows contextual options: Details, Orders → Move, Siege, etc.
  */
 export function MapContextMenu() {
   const menu = useStore(s => s.mapContextMenu);
@@ -11,11 +11,15 @@ export function MapContextMenu() {
   const player = useStore(s => s.player) as Record<string, unknown> | null;
   const hexes = useStore(s => s.hexes);
   const armies = useStore(s => s.armies);
+  const settlements = useStore(s => s.settlements);
   const selectedArmyId = useStore(s => s.selectedArmyId);
   const setSelectedArmyId = useStore(s => s.setSelectedArmyId);
   const setDetailPanelHex = useStore(s => s.setDetailPanelHex);
   const setIsSelectingMoveTarget = useStore(s => s.setIsSelectingMoveTarget);
   const setSelectedHex = useStore(s => s.setSelectedHex);
+  const addSiegeAssault = useStore(s => s.addSiegeAssault);
+  const removeSiegeAssault = useStore(s => s.removeSiegeAssault);
+  const pendingOrders = useStore(s => s.pendingOrders);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -100,22 +104,49 @@ export function MapContextMenu() {
       )}
 
       {/* Orders submenu — only if an army is selected */}
-      {hasSelectedArmy && (
-        <>
-          <div className="map-context-divider" />
-          <div className="map-context-label">Orders — {selectedArmy.name}</div>
-          <button
-            className="map-context-item"
-            onClick={() => {
-              setIsSelectingMoveTarget(true);
-              close(null);
-            }}
-          >
-            Move
-            <span className="map-context-item-detail">Click destination</span>
-          </button>
-        </>
-      )}
+      {hasSelectedArmy && (() => {
+        // Check if there's an enemy settlement on this hex that the selected army is on
+        const armyOnThisHex = selectedArmy.hexQ === menu.hex.q && selectedArmy.hexR === menu.hex.r;
+        const enemySettlement = settlements.find((s: any) =>
+          s.hexQ === menu.hex.q && s.hexR === menu.hex.r && s.ownerId !== playerId
+        );
+        const canSiege = armyOnThisHex && enemySettlement;
+        const hasSiegeOrder = pendingOrders.siegeAssaults.some(sa => sa.armyId === selectedArmyId);
+
+        return (
+          <>
+            <div className="map-context-divider" />
+            <div className="map-context-label">Orders — {selectedArmy.name}</div>
+            <button
+              className="map-context-item"
+              onClick={() => {
+                setIsSelectingMoveTarget(true);
+                close(null);
+              }}
+            >
+              Move
+              <span className="map-context-item-detail">Click destination</span>
+            </button>
+
+            {canSiege && (
+              <button
+                className={`map-context-item ${hasSiegeOrder ? 'map-context-item-active' : ''}`}
+                onClick={() => {
+                  if (hasSiegeOrder) {
+                    removeSiegeAssault(selectedArmyId!);
+                  } else {
+                    addSiegeAssault(selectedArmyId!, menu.hex.q, menu.hex.r);
+                  }
+                  close(null);
+                }}
+              >
+                {hasSiegeOrder ? 'Cancel Siege' : 'Siege'}
+                <span className="map-context-item-detail">{(enemySettlement as any).name}</span>
+              </button>
+            )}
+          </>
+        );
+      })()}
 
     </div>
   );

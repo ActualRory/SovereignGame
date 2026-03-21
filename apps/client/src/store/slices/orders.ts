@@ -85,6 +85,7 @@ export interface PendingOrders {
   dismissMounts: DraftMountsOrder[];
   placeEquipmentOrders: PlaceEquipmentOrderOrder[];
   cancelEquipmentOrders: string[];
+  siegeAssaults: Array<{ armyId: string; targetHexQ: number; targetHexR: number }>;
   disbandUnits: Array<{ unitId: string; armyId: string }>;
   upgradeUnits: Array<{ unitId: string; armyId: string; settlementId: string }>;
   replenishments: Array<{ unitId: string; armyId: string; settlementId: string }>;
@@ -99,6 +100,8 @@ export interface OrdersSlice {
   removeMovement: (armyId: string) => void;
   addRecruitment: (order: RecruitFromTemplateOrder) => void;
   removeRecruitment: (index: number) => void;
+  addSiegeAssault: (armyId: string, targetHexQ: number, targetHexR: number) => void;
+  removeSiegeAssault: (armyId: string) => void;
   resetOrders: (taxRate?: string) => void;
 }
 
@@ -125,6 +128,7 @@ const defaultOrders = (taxRate = 'low'): PendingOrders => ({
   dismissMounts: [],
   placeEquipmentOrders: [],
   cancelEquipmentOrders: [],
+  siegeAssaults: [],
   disbandUnits: [],
   upgradeUnits: [],
   replenishments: [],
@@ -167,6 +171,23 @@ export const createOrdersSlice: StateCreator<OrdersSlice> = (set) => ({
     pendingOrders: {
       ...s.pendingOrders,
       recruitments: s.pendingOrders.recruitments.filter((_, i) => i !== index),
+    },
+  })),
+
+  addSiegeAssault: (armyId, targetHexQ, targetHexR) => set((s) => ({
+    pendingOrders: {
+      ...s.pendingOrders,
+      siegeAssaults: [
+        ...s.pendingOrders.siegeAssaults.filter(sa => sa.armyId !== armyId),
+        { armyId, targetHexQ, targetHexR },
+      ],
+    },
+  })),
+
+  removeSiegeAssault: (armyId) => set((s) => ({
+    pendingOrders: {
+      ...s.pendingOrders,
+      siegeAssaults: s.pendingOrders.siegeAssaults.filter(sa => sa.armyId !== armyId),
     },
   })),
 

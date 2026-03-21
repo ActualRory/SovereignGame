@@ -48,7 +48,7 @@ export function TurnBar() {
         hireGenerals: pendingOrders.hireGenerals,
         createArmies: pendingOrders.createArmies,
         newSettlements: pendingOrders.newSettlements,
-        siegeAssaults: [],
+        siegeAssaults: pendingOrders.siegeAssaults,
         unitReassignments: [],
         lettersSent: [],
         tradeProposals: pendingOrders.tradeProposals,

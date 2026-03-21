@@ -27,6 +27,7 @@ export interface GameState {
   unitTemplates: Record<string, unknown>[];
   weaponDesigns: Record<string, unknown>[];
   equipmentOrders: Record<string, unknown>[];
+  movementLog: Record<string, unknown> | null;
 }
 
 export interface GameSlice extends GameState {
@@ -55,6 +56,7 @@ const initialState: GameState = {
   unitTemplates: [],
   weaponDesigns: [],
   equipmentOrders: [],
+  movementLog: null,
 };
 
 export const createGameSlice: StateCreator<GameSlice> = (set) => ({

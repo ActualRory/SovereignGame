@@ -316,10 +316,11 @@ gameRouter.get('/:slug/state', async (req, res) => {
   const myDesigns = allDesigns.filter(d => d.playerId === player.id);
   const myEquipmentOrders = allEquipmentOrders.filter(o => o.playerId === player.id);
 
-  // Fetch latest combat logs + event log (from previous turn)
+  // Fetch latest combat logs + event log + movement log (from previous turn)
   const prevTurn = game.currentTurn - 1;
   let latestCombatLogs: unknown[] = [];
   let latestEventLog: unknown[] = [];
+  let latestMovementLog: unknown = null;
   if (prevTurn >= 1) {
     const [snapshot] = await db.select().from(schema.turnSnapshots)
       .where(and(
@@ -340,11 +341,38 @@ gameRouter.get('/:slug/state', async (req, res) => {
         return !evt.playerIds || evt.playerIds.length === 0 || evt.playerIds.includes(player.id);
       });
     }
+    if ((snapshot as any)?.movementLog) {
+      // Fog-filter movement log: own armies show full path, enemy armies only in visible hexes
+      const rawLog = (snapshot as any).movementLog as { ticks?: any[][]; combats?: any[] };
+      if (rawLog?.ticks) {
+        // We need the player's current visibility to filter
+        // For now, include own army steps fully, filter enemy steps by hex visibility
+        // Visibility is computed by buildFilteredState below, so we do a simpler filter:
+        // include all steps where ownerId === player.id, and enemy steps through owned/visible hexes
+        const filteredTicks = rawLog.ticks.map((tick: any[]) =>
+          tick.filter((step: any) => {
+            if (step.ownerId === player.id) return true;
+            // Include enemy steps on hexes we own or have settlements on
+            const toKey = `${step.toQ},${step.toR}`;
+            const hex = hexes.find((h: any) => `${h.q},${h.r}` === toKey);
+            return hex && hex.ownerId === player.id;
+          })
+        ).filter((tick: any[]) => tick.length > 0);
+
+        const filteredCombats = (rawLog.combats ?? []).filter((c: any) => {
+          const atkArmy = allArmies.find(a => a.id === c.attackerArmyId);
+          const defArmy = allArmies.find(a => a.id === c.defenderArmyId);
+          return atkArmy?.ownerId === player.id || defArmy?.ownerId === player.id;
+        });
+
+        latestMovementLog = { ticks: filteredTicks, combats: filteredCombats };
+      }
+    }
   }
 
   try {
     const filtered = await buildFilteredState(game.id, player.id, rawState);
-    res.json({ ...filtered, combatLogs: latestCombatLogs, eventLog: latestEventLog, techProgress: myTech, letters: myLetters, diplomacyRelations: myRelations, tradeAgreements: myTrades, unitTemplates: myTemplates, weaponDesigns: myDesigns, equipmentOrders: myEquipmentOrders });
+    res.json({ ...filtered, combatLogs: latestCombatLogs, eventLog: latestEventLog, movementLog: latestMovementLog, techProgress: myTech, letters: myLetters, diplomacyRelations: myRelations, tradeAgreements: myTrades, unitTemplates: myTemplates, weaponDesigns: myDesigns, equipmentOrders: myEquipmentOrders });
   } catch (err) {
     console.error('Fog filter error:', err);
     res.json({
@@ -357,6 +385,7 @@ gameRouter.get('/:slug/state', async (req, res) => {
       visibility: {},
       combatLogs: latestCombatLogs,
       eventLog: latestEventLog,
+      movementLog: latestMovementLog,
       techProgress: myTech,
       letters: myLetters,
       diplomacyRelations: myRelations,

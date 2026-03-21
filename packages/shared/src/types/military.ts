@@ -207,6 +207,38 @@ export interface Fleet {
   ships: Ship[];
 }
 
+// ── Movement Log (for turn replay animation) ──
+
+/** A single army's movement in one tick of step-by-step resolution. */
+export interface MovementStep {
+  armyId: string;
+  ownerId: string;
+  fromQ: number;
+  fromR: number;
+  toQ: number;
+  toR: number;
+}
+
+/** A combat that occurred mid-movement when two armies collided. */
+export interface MovementCombatEvent {
+  tick: number;
+  hexQ: number;
+  hexR: number;
+  attackerArmyId: string;
+  defenderArmyId: string;
+  winner: 'attacker' | 'defender' | 'draw';
+  loserRetreatQ: number | null;
+  loserRetreatR: number | null;
+}
+
+/** Full movement log for one turn, used by the client for replay animation. */
+export interface MovementLog {
+  /** ticks[i] = all army moves that happened in simultaneous tick i */
+  ticks: MovementStep[][];
+  /** Combats that occurred at collision points during movement */
+  combats: MovementCombatEvent[];
+}
+
 // ── Settlement draft pools ──
 
 /** Manpower and mount pools held at a settlement, available for unit raising. */

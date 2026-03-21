@@ -4,6 +4,7 @@
  */
 
 import type { HexCoord, HexDirection } from '../types/map.js';
+import type { DiplomacyRelation } from '../types/diplomacy.js';
 
 // ─── Axial direction vectors (flat-top hex grid) ───
 
@@ -183,4 +184,38 @@ export function hasRiverBetween(
   const toKey = `${to.q},${to.r}`;
   const toEdges = hexRiverEdges.get(toKey) ?? [];
   return toEdges.includes(oppositeDirection(dir));
+}
+
+// ─── Border Access ───
+
+/**
+ * Check if an army owned by `armyOwnerId` can enter a hex owned by `hexOwnerId`.
+ * Allowed when:
+ * - hex is unowned (null)
+ * - hex is owned by the army's owner
+ * - the two players are at war
+ * - the two players have an alliance/military_union/nap with openBorders
+ */
+export function canEnterHex(
+  hexOwnerId: string | null,
+  armyOwnerId: string,
+  relations: Pick<DiplomacyRelation, 'playerAId' | 'playerBId' | 'relationType' | 'terms'>[],
+): boolean {
+  if (!hexOwnerId || hexOwnerId === armyOwnerId) return true;
+
+  const rel = relations.find(
+    r => (r.playerAId === armyOwnerId && r.playerBId === hexOwnerId)
+      || (r.playerAId === hexOwnerId && r.playerBId === armyOwnerId),
+  );
+
+  if (!rel) return false;
+  if (rel.relationType === 'war') return true;
+  if (
+    (rel.relationType === 'alliance' || rel.relationType === 'military_union' || rel.relationType === 'nap')
+    && rel.terms
+    && (rel.terms as { openBorders?: boolean }).openBorders
+  ) {
+    return true;
+  }
+  return false;
 }

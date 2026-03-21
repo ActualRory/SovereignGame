@@ -19,6 +19,8 @@ export interface UiSlice {
   detailPanelHex: { q: number; r: number } | null;
   /** When set, MapCanvas will pan to this hex then clear it */
   panToHex: { q: number; r: number } | null;
+  /** True while the movement replay animation is playing */
+  isAnimatingMovement: boolean;
   setActiveTab: (tab: TabId | null) => void;
   setSelectedHex: (hex: { q: number; r: number } | null) => void;
   setSelectedArmyId: (id: string | null) => void;
@@ -26,6 +28,7 @@ export interface UiSlice {
   setIsSelectingMoveTarget: (v: boolean) => void;
   setDetailPanelHex: (hex: { q: number; r: number } | null) => void;
   setPanToHex: (hex: { q: number; r: number } | null) => void;
+  setIsAnimatingMovement: (v: boolean) => void;
 }
 
 export const createUiSlice: StateCreator<UiSlice> = (set) => ({
@@ -36,6 +39,7 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   isSelectingMoveTarget: false,
   detailPanelHex: null,
   panToHex: null,
+  isAnimatingMovement: false,
   setActiveTab: (tab) => set((state) => ({
     activeTab: state.activeTab === tab ? null : tab,
   })),
@@ -45,4 +49,5 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   setIsSelectingMoveTarget: (v) => set({ isSelectingMoveTarget: v }),
   setDetailPanelHex: (hex) => set({ detailPanelHex: hex }),
   setPanToHex: (hex) => set({ panToHex: hex }),
+  setIsAnimatingMovement: (v) => set({ isAnimatingMovement: v }),
 });

@@ -5,12 +5,13 @@ import {
   hexToPixel, hexCorners, roundHex, pixelToHex, HEX_SIZE,
   TERRAIN_COLORS, HEX_GRID_COLOR, HEX_GRID_ALPHA, DIR_EDGE_INDEX,
 } from './hex-layout.js';
-import { findPath, hexKey, hexNeighbor, ALL_DIRECTIONS, TERRAIN, RIVER_CROSSING_COST, hasRiverBetween, type HexCoord, type TerrainType, type HexDirection } from '@kingdoms/shared';
+import { findPath, hexKey, hexNeighbor, ALL_DIRECTIONS, TERRAIN, RIVER_CROSSING_COST, hasRiverBetween, canEnterHex, type HexCoord, type TerrainType, type HexDirection, type DiplomacyRelation } from '@kingdoms/shared';
 import { generateParchmentTexture, type HexData } from './parchment-generator.js';
 import { generateTerrainTextures, terrainVariant, terrainRotation, clearTerrainTextures } from './terrain-symbols.js';
 import { wobblyLine, hexSeed, mulberry32 } from './wobbly-line.js';
 import { drawSettlement, drawArmy, drawMoveTargetIndicator } from './map-icons.js';
 import { applyNoiseOverlay } from './noise-overlay.js';
+import { animateMovement } from './movement-animator.js';
 
 /**
  * PixiJS hex map renderer — cartographic / old-map style.
@@ -42,6 +43,9 @@ export function MapCanvas() {
   const panToHex = useStore(s => s.panToHex);
   const setPanToHex = useStore(s => s.setPanToHex);
   const setActiveTab = useStore(s => s.setActiveTab);
+  const movementLog = useStore(s => s.movementLog);
+  const isAnimatingMovement = useStore(s => s.isAnimatingMovement);
+  const setIsAnimatingMovement = useStore(s => s.setIsAnimatingMovement);
 
   const selectedHexRef = useRef(selectedHex);
   selectedHexRef.current = selectedHex;
@@ -193,14 +197,20 @@ export function MapCanvas() {
           return;
         }
 
+        // Build relations array for border access checks
+        const relations = (state.diplomacyRelations ?? []) as unknown as DiplomacyRelation[];
+
         const hexData = new Map<string, { terrain: TerrainType; passable: boolean }>();
         const riverEdges = new Map<string, HexDirection[]>();
         for (const h of state.hexes) {
           const hx = h as any;
           const key = hexKey({ q: hx.q, r: hx.r });
+          const terrainPassable = hx.terrain !== 'coast';
+          // Block hexes owned by foreign players without war/openBorders
+          const borderPassable = canEnterHex(hx.ownerId ?? null, playerId, relations);
           hexData.set(key, {
             terrain: hx.terrain as TerrainType,
-            passable: hx.terrain !== 'coast',
+            passable: terrainPassable && borderPassable,
           });
           if (hx.riverEdges?.length > 0) {
             riverEdges.set(key, hx.riverEdges as HexDirection[]);
@@ -580,8 +590,8 @@ export function MapCanvas() {
         drawSettlement(iconGraphics, pos.x, pos.y, settlement.tier, settlement.isCapital);
       }
 
-      // Armies (skip in fog)
-      if (fogState === 'full_vision') {
+      // Armies (skip in fog, skip during animation)
+      if (fogState === 'full_vision' && !isAnimatingMovement) {
         const hexArmies = armiesByHex.get(hexK);
         if (hexArmies) {
           for (let i = 0; i < hexArmies.length; i++) {
@@ -594,7 +604,37 @@ export function MapCanvas() {
         }
       }
     }
-  }, [hexes, settlements, armies, players]);
+  }, [hexes, settlements, armies, players, isAnimatingMovement]);
+
+  // ═══════════════════════════════════════════════════════════
+  // MOVEMENT REPLAY ANIMATION
+  // Triggered when a new movementLog arrives after turn resolution
+  // ═══════════════════════════════════════════════════════════
+  const prevMovementLogRef = useRef<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world || !movementLog) return;
+    // Only trigger on new movement logs, not on re-renders
+    if (movementLog === prevMovementLogRef.current) return;
+    prevMovementLogRef.current = movementLog;
+
+    const log = movementLog as any;
+    if (!log.ticks || log.ticks.length === 0) return;
+
+    // Build player color map
+    const playerColors = new Map<string, number>();
+    for (const p of players) {
+      const pp = p as any;
+      playerColors.set(pp.id, parseInt((pp.color ?? '#666666').replace('#', ''), 16));
+    }
+
+    setIsAnimatingMovement(true);
+
+    animateMovement(world, log, playerColors).then(() => {
+      setIsAnimatingMovement(false);
+    });
+  }, [movementLog, players, setIsAnimatingMovement]);
 
   // ═══════════════════════════════════════════════════════════
   // DYNAMIC LAYERS: selection highlight, movement paths, army highlights

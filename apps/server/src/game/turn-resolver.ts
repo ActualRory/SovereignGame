@@ -6,6 +6,7 @@
 
 import { eq, and } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
+import { resolveMovementStepByStep } from './movement-resolver.js';
 import {
   getSeason, isMajorTurnEnd,
   calculateSettlementProduction, calculateTaxIncome,
@@ -1364,7 +1365,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   }
 
   // ══════════════════════════════════════════════
-  // STEP 9: Movement (all armies advance simultaneously)
+  // STEP 9+10: Movement + Combat (step-by-step simultaneous)
   // ══════════════════════════════════════════════
   // First, set movement paths from orders
   for (const player of activePlayers) {
@@ -1382,275 +1383,103 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     }
   }
 
-  // Build hex data map and river edges map for movement cost
+  // Load all data needed for movement resolution
   const hexDataForMovement = await db.select().from(schema.gameHexes)
     .where(eq(schema.gameHexes.gameId, gameId));
 
-  const hexTerrainMap = new Map<string, TerrainType>();
-  const hexRiverEdges = new Map<string, HexDirection[]>();
-  for (const h of hexDataForMovement) {
-    const key = hexKey({ q: h.q, r: h.r });
-    hexTerrainMap.set(key, h.terrain as TerrainType);
-    hexRiverEdges.set(key, (h.riverEdges ?? []) as HexDirection[]);
-  }
-
-  // Resolve movement: each army spends movement points to advance along its path
-  const BASE_MOVEMENT_POINTS = 4; // points per turn
-
-  const movingArmies = await db.select().from(schema.armies)
+  const allMovementArmies = await db.select().from(schema.armies)
     .where(eq(schema.armies.gameId, gameId));
 
-  for (const army of movingArmies) {
-    const path = army.movementPath as Array<{ q: number; r: number }> | null;
-    if (!path || path.length < 2) continue;
+  const allDiplomacyRelations = await db.select().from(schema.diplomacyRelations)
+    .where(eq(schema.diplomacyRelations.gameId, gameId));
 
-    let remainingMP = BASE_MOVEMENT_POINTS;
-    let currentQ = army.hexQ;
-    let currentR = army.hexR;
-    let pathIndex = 0;
+  const allGenerals = await db.select().from(schema.generals)
+    .where(eq(schema.generals.gameId, gameId));
+  const generalsMap = new Map(allGenerals.map(g => [g.id, { id: g.id, commandRating: g.commandRating }]));
 
-    // Find where we are on the path
-    for (let i = 0; i < path.length; i++) {
-      if (path[i].q === currentQ && path[i].r === currentR) {
-        pathIndex = i;
-        break;
-      }
-    }
-
-    // Advance along the path spending movement points
-    while (pathIndex < path.length - 1 && remainingMP > 0) {
-      const nextHex = path[pathIndex + 1];
-      const nextKey = hexKey(nextHex);
-      const terrain = hexTerrainMap.get(nextKey);
-      if (!terrain) break; // invalid hex
-
-      // Mountains are impassable for armies (unless there's a road — future feature)
-      if (terrain === 'mountains') break;
-
-      let moveCost = TERRAIN[terrain].movementCost;
-
-      // River crossing penalty
-      if (hasRiverBetween(
-        { q: currentQ, r: currentR },
-        nextHex,
-        hexRiverEdges,
-      )) {
-        moveCost += RIVER_CROSSING_COST;
-      }
-
-      if (remainingMP < moveCost) break; // not enough MP
-
-      remainingMP -= moveCost;
-      currentQ = nextHex.q;
-      currentR = nextHex.r;
-      pathIndex++;
-    }
-
-    // Update army position
-    if (currentQ !== army.hexQ || currentR !== army.hexR) {
-      // Clear path if we've reached the end
-      const reachedEnd = pathIndex >= path.length - 1;
-      await db.update(schema.armies)
-        .set({
-          hexQ: currentQ,
-          hexR: currentR,
-          movementPath: reachedEnd ? null : path as any,
-        })
-        .where(eq(schema.armies.id, army.id));
-    }
+  const allUnits = await db.select().from(schema.units);
+  const unitsByArmy = new Map<string, typeof allUnits>();
+  for (const u of allUnits) {
+    const list = unitsByArmy.get(u.armyId) ?? [];
+    list.push(u);
+    unitsByArmy.set(u.armyId, list);
   }
 
-  // ══════════════════════════════════════════════
-  // STEP 10: Combat (triggered by army collisions after movement)
-  // ══════════════════════════════════════════════
-  const postMoveArmies = await db.select().from(schema.armies)
-    .where(eq(schema.armies.gameId, gameId));
+  const allTemplates = await db.select().from(schema.unitTemplates)
+    .where(eq(schema.unitTemplates.gameId, gameId));
 
-  // Group armies by hex
-  const armiesByHex = new Map<string, typeof postMoveArmies>();
-  for (const army of postMoveArmies) {
-    const key = hexKey({ q: army.hexQ, r: army.hexR });
-    const list = armiesByHex.get(key) ?? [];
-    list.push(army);
-    armiesByHex.set(key, list);
+  const allWeaponDesigns = await db.select().from(schema.weaponDesigns)
+    .where(eq(schema.weaponDesigns.gameId, gameId));
+
+  const playerNames = new Map(activePlayers.map(p => [p.id, p.countryName as string]));
+
+  // Run step-by-step movement with border enforcement and mid-path combat
+  const movementResult = resolveMovementStepByStep({
+    gameId,
+    turnNumber,
+    armies: allMovementArmies.map(a => ({
+      id: a.id,
+      ownerId: a.ownerId,
+      hexQ: a.hexQ,
+      hexR: a.hexR,
+      movementPath: a.movementPath as Array<{ q: number; r: number }> | null,
+      generalId: a.generalId,
+    })),
+    hexData: hexDataForMovement.map(h => ({
+      q: h.q,
+      r: h.r,
+      terrain: h.terrain as string,
+      ownerId: h.ownerId,
+      riverEdges: (h.riverEdges ?? []) as HexDirection[],
+    })),
+    relations: allDiplomacyRelations.map(r => ({
+      id: r.id,
+      gameId: r.gameId,
+      playerAId: r.playerAId,
+      playerBId: r.playerBId,
+      relationType: r.relationType as any,
+      allianceName: r.allianceName,
+      terms: r.terms as any,
+      startedTurn: r.startedTurn,
+    })),
+    generals: generalsMap,
+    unitsByArmy: unitsByArmy as any,
+    templates: allTemplates as any,
+    weaponDesigns: allWeaponDesigns as any,
+    playerNames,
+  });
+
+  // Apply movement results to DB
+  for (const [armyId, pos] of movementResult.positions) {
+    await db.update(schema.armies)
+      .set({
+        hexQ: pos.hexQ,
+        hexR: pos.hexR,
+        movementPath: pos.movementPath as any,
+      })
+      .where(eq(schema.armies.id, armyId));
   }
 
-  // Track armies already resolved in combat this turn
-  const resolvedArmyIds = new Set<string>();
-
-  for (const [hKey, hexArmies] of armiesByHex) {
-    if (hexArmies.length < 2) continue;
-
-    // Group by owner
-    const byOwner = new Map<string, typeof hexArmies>();
-    for (const a of hexArmies) {
-      const list = byOwner.get(a.ownerId) ?? [];
-      list.push(a);
-      byOwner.set(a.ownerId, list);
-    }
-
-    if (byOwner.size < 2) continue; // no enemy collision
-
-    const ownerIds = [...byOwner.keys()];
-    // Resolve pairwise: first two owners fight (simplification for V1)
-    const attackerOwnerId = ownerIds[0];
-    const defenderOwnerId = ownerIds[1];
-    const attackerArmies = byOwner.get(attackerOwnerId)!;
-    const defenderArmies = byOwner.get(defenderOwnerId)!;
-
-    // Use the first army from each side as the main combatant
-    const atkArmy = attackerArmies[0];
-    const defArmy = defenderArmies[0];
-
-    if (resolvedArmyIds.has(atkArmy.id) || resolvedArmyIds.has(defArmy.id)) continue;
-
-    // Load units for both armies
-    const atkUnits = await db.select().from(schema.units)
-      .where(eq(schema.units.armyId, atkArmy.id));
-    const defUnits = await db.select().from(schema.units)
-      .where(eq(schema.units.armyId, defArmy.id));
-
-    const activeAtkUnits = atkUnits.filter(u => u.state !== 'destroyed');
-    const activeDefUnits = defUnits.filter(u => u.state !== 'destroyed');
-
-    if (activeAtkUnits.length === 0 || activeDefUnits.length === 0) continue;
-
-    // Load all templates for these units
-    const allCombatUnitIds = [...activeAtkUnits, ...activeDefUnits].map(u => u.templateId).filter(Boolean) as string[];
-    const allTemplates = allCombatUnitIds.length > 0
-      ? await db.select().from(schema.unitTemplates).where(
-          eq(schema.unitTemplates.gameId, gameId)
-        )
-      : [];
-
-    // Load all weapon designs for this game (used by computeUnitStats)
-    const allWeaponDesigns = await db.select().from(schema.weaponDesigns)
-      .where(eq(schema.weaponDesigns.gameId, gameId));
-
-    function buildCombatUnit(u: typeof atkUnits[0]): CombatUnitInput | null {
-      const tmpl = allTemplates.find(t => t.id === u.templateId) as UnitTemplate | undefined;
-      if (!tmpl) return null;
-      const troopCounts = (u.troopCounts ?? { rookie: 0, capable: 0, veteran: 0 }) as TroopCounts;
-      const maxTroops = tmpl.isMounted
-        ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON
-        : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
-      const stats = computeUnitStats(tmpl, allWeaponDesigns as WeaponDesign[]);
-      return {
-        id: u.id,
-        unitName: u.name ?? tmpl.name,
-        position: (u.position ?? getDefaultPosition(tmpl.isMounted)) as UnitPosition,
-        state: u.state as UnitState,
-        xp: u.xp ?? 0,
-        troopCounts,
-        maxTroops,
-        fire: stats.fire,
-        shock: stats.shock,
-        defence: stats.defence,
-        morale: stats.morale,
-        armour: stats.armour,
-        ap: stats.ap,
-        hitsOn: stats.hitsOn,
-      };
-    }
-
-    // Load generals
-    const [atkGeneral] = atkArmy.generalId
-      ? await db.select().from(schema.generals).where(eq(schema.generals.id, atkArmy.generalId))
-      : [null];
-    const [defGeneral] = defArmy.generalId
-      ? await db.select().from(schema.generals).where(eq(schema.generals.id, defArmy.generalId))
-      : [null];
-
-    // Get terrain
-    const combatHex = hexDataForMovement.find(h => hexKey({ q: h.q, r: h.r }) === hKey);
-    const combatTerrain = (combatHex?.terrain ?? 'plains') as TerrainType;
-
-    // Generate combat seed
-    const combatSeed = hashSeed(`${gameId}:${turnNumber}:${atkArmy.id}:${defArmy.id}`);
-
-    const atkCombatUnits = activeAtkUnits.map(buildCombatUnit).filter((u): u is CombatUnitInput => u !== null);
-    const defCombatUnits = activeDefUnits.map(buildCombatUnit).filter((u): u is CombatUnitInput => u !== null);
-
-    if (atkCombatUnits.length === 0 || defCombatUnits.length === 0) continue;
-
-    const combatInput: CombatInput = {
-      id: `combat-${turnNumber}-${atkArmy.id}-${defArmy.id}`,
-      seed: combatSeed,
-      terrain: combatTerrain,
-      riverCrossing: false,
-      attacker: {
-        armyId: atkArmy.id,
-        commandRating: atkGeneral?.commandRating ?? 0,
-        units: atkCombatUnits,
-      },
-      defender: {
-        armyId: defArmy.id,
-        commandRating: defGeneral?.commandRating ?? 0,
-        units: defCombatUnits,
-      },
-    };
-
-    const result = resolveCombat(combatInput);
-    combatLogs.push(result);
-
-    // Apply combat results to units in DB
-    for (const loss of [...result.attackerLosses, ...result.defenderLosses]) {
-      const endTotal = loss.endTroops;
-      const maxTroops = allTemplates.find(t => t.id === loss.templateId) ?
-        (() => {
-          const tmpl = allTemplates.find(t => t.id === loss.templateId)!;
-          return tmpl.isMounted ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
-        })() : 100;
-      const pct = maxTroops > 0 ? endTotal / maxTroops : 0;
-      const newState = loss.destroyed ? 'destroyed'
-        : pct < 0.4 ? 'broken'
-        : pct < 0.6 ? 'depleted'
-        : 'full';
-
-      await db.update(schema.units)
-        .set({
-          troopCounts: loss.endTroopCounts,
-          state: newState,
-          xp: loss.xpGained,
-        })
-        .where(eq(schema.units.id, loss.unitId));
-    }
-
-    // Loser retreats (move back 1 hex toward their territory)
-    if (result.winner !== 'draw') {
-      const loserArmy = result.winner === 'attacker' ? defArmy : atkArmy;
-      const winnerArmy = result.winner === 'attacker' ? atkArmy : defArmy;
-
-      // Find a neighboring hex to retreat to
-      const neighbors = hexNeighbors({ q: loserArmy.hexQ, r: loserArmy.hexR });
-      const retreatHex = neighbors.find(n => {
-        const nh = hexDataForMovement.find(h => h.q === n.q && h.r === n.r);
-        return nh && nh.terrain !== 'coast' && nh.terrain !== 'mountains';
-      });
-
-      if (retreatHex) {
-        await db.update(schema.armies)
-          .set({ hexQ: retreatHex.q, hexR: retreatHex.r, movementPath: null })
-          .where(eq(schema.armies.id, loserArmy.id));
-      }
-
-      // Winner stops moving
-      await db.update(schema.armies)
-        .set({ movementPath: null })
-        .where(eq(schema.armies.id, winnerArmy.id));
-
-      const winnerPlayer = activePlayers.find(p => p.id === winnerArmy.ownerId);
-      const loserPlayer = activePlayers.find(p => p.id === loserArmy.ownerId);
-      events.push({
-        type: 'battle',
-        description: `${winnerPlayer?.countryName ?? '?'} defeated ${loserPlayer?.countryName ?? '?'} at (${loserArmy.hexQ},${loserArmy.hexR})`,
-        playerIds: [winnerArmy.ownerId, loserArmy.ownerId],
-      });
-    }
-
-    resolvedArmyIds.add(atkArmy.id);
-    resolvedArmyIds.add(defArmy.id);
+  // Apply combat unit updates to DB
+  for (const [unitId, update] of movementResult.unitUpdates) {
+    await db.update(schema.units)
+      .set({
+        troopCounts: update.troopCounts,
+        state: update.state as any,
+        xp: update.xp,
+      })
+      .where(eq(schema.units.id, unitId));
   }
+
+  // Apply retreat/stop positions for armies involved in combat
+  // (already handled within movementResult.positions)
+
+  // Merge movement events and combat logs into the turn's results
+  combatLogs.push(...movementResult.combatLogs);
+  events.push(...movementResult.events);
+
+  // Store movement log for client animation (will be saved in snapshot below)
+  const movementLog = movementResult.movementLog;
 
   // ══════════════════════════════════════════════
   // STEP 11: Siege Assault + Capture/Raze
@@ -2181,6 +2010,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     snapshot: {} as any, // TODO: full state snapshot in later phases
     combatLogs: combatLogs as any,
     eventLog: events as any,
+    movementLog: movementLog as any,
   });
 
   // ══════════════════════════════════════════════

@@ -314,6 +314,7 @@ export const turnSnapshots = pgTable('turn_snapshots', {
   snapshot: jsonb('snapshot').$type<Record<string, unknown>>().notNull(),
   combatLogs: jsonb('combat_logs').$type<unknown[]>().notNull().default([]),
   eventLog: jsonb('event_log').$type<unknown[]>().notNull().default([]),
+  movementLog: jsonb('movement_log').$type<Record<string, unknown>>().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex('turn_snapshot_idx').on(table.gameId, table.turnNumber),

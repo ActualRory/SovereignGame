@@ -341,15 +341,38 @@ export function MapCanvas() {
     }
 
     // ── Layer 1: Hex grid outlines (very faint) ──
+    // Only draw edges where the two hexes have different owners (or unowned),
+    // so the interior of a country reads as one clean territory.
     const gridLayer = new Graphics();
     staticRoot.addChild(gridLayer);
+
+    // Build owner lookup early (also used by border layer below)
+    const ownerMap = new Map<string, string>();
+    for (const hex of hexes) {
+      const h = hex as any;
+      if (h.ownerId) {
+        ownerMap.set(hexKey({ q: h.q, r: h.r }), h.ownerId);
+      }
+    }
 
     for (const hex of hexes) {
       const h = hex as any;
       const pos = hexToPixel(h.q, h.r);
       const offsetCorners = corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y }));
-      gridLayer.poly(offsetCorners);
-      gridLayer.stroke({ color: HEX_GRID_COLOR, width: 0.7, alpha: HEX_GRID_ALPHA });
+      const myOwner = ownerMap.get(hexKey({ q: h.q, r: h.r }));
+
+      for (let di = 0; di < ALL_DIRECTIONS.length; di++) {
+        const neighbor = hexNeighbor({ q: h.q, r: h.r }, ALL_DIRECTIONS[di]);
+        const neighborOwner = ownerMap.get(hexKey(neighbor));
+        // Skip this edge if both hexes share the same owner
+        if (myOwner && myOwner === neighborOwner) continue;
+
+        const c1 = offsetCorners[di];
+        const c2 = offsetCorners[(di + 1) % 6];
+        gridLayer.moveTo(c1.x, c1.y);
+        gridLayer.lineTo(c2.x, c2.y);
+        gridLayer.stroke({ color: HEX_GRID_COLOR, width: 0.7, alpha: HEX_GRID_ALPHA });
+      }
     }
 
     // ── Layer 2: Terrain symbol stamps ──
@@ -410,15 +433,6 @@ export function MapCanvas() {
     // ── Layer 4: Political borders (wobbly, edge-based) ──
     const borderGraphics = new Graphics();
     staticRoot.addChild(borderGraphics);
-
-    // Build owner lookup
-    const ownerMap = new Map<string, string>();
-    for (const hex of hexes) {
-      const h = hex as any;
-      if (h.ownerId) {
-        ownerMap.set(hexKey({ q: h.q, r: h.r }), h.ownerId);
-      }
-    }
 
     const playerColors = new Map<string, number>();
     for (const p of players) {

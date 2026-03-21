@@ -32,7 +32,9 @@ import {
   type HexDirection, type Season, type StabilityEventType,
   type WeaponType, type ShieldType, type ArmourType, type MountType,
   type UnitTemplate, type WeaponDesign, type TroopCounts,
+  UNILATERAL_ATTACHMENTS, type LetterAttachment,
 } from '@kingdoms/shared';
+import { processAttachmentEffect } from './attachment-effects.js';
 
 export interface TurnResult {
   events: EventEntry[];
@@ -1252,8 +1254,10 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   }
 
   // ══════════════════════════════════════════════
-  // STEP 7: Trade Resolution (standing + one-time transfers)
+  // STEP 7: Trade Resolution (cancellations + standing/one-time transfers)
   // ══════════════════════════════════════════════
+  // Trade proposals are now created via letter attachments (accept/reject).
+  // This step only handles cancellations and executing existing agreements.
   for (const player of activePlayers) {
     const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
 
@@ -1261,29 +1265,6 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     for (const cancelId of (orders.tradeCancellations ?? [])) {
       await db.delete(schema.tradeAgreements)
         .where(eq(schema.tradeAgreements.id, cancelId));
-    }
-
-    // New trade proposals → create agreements (auto-accept for V1 simplicity)
-    for (const proposal of (orders.tradeProposals ?? [])) {
-      // Find nearest settlements for both players to check distance
-      await db.insert(schema.tradeAgreements).values({
-        gameId,
-        playerAId: player.id,
-        playerBId: proposal.recipientId,
-        tier: 'trade_route',
-        terms: {
-          offeredResources: proposal.offeredResources,
-          requestedResources: proposal.requestedResources,
-        },
-        isStanding: proposal.isStanding,
-        startedTurn: turnNumber,
-      });
-
-      events.push({
-        type: 'trade_established',
-        description: `${player.countryName} established trade`,
-        playerIds: [player.id, proposal.recipientId],
-      });
     }
   }
 
@@ -1361,6 +1342,22 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         description: `Letter from ${sender?.countryName ?? '?'} has arrived`,
         playerIds: [letter.recipientId],
       });
+
+      // Process unilateral attachments immediately on delivery
+      const attachments = (letter.attachments ?? []) as LetterAttachment[];
+      for (const attachment of attachments) {
+        if (UNILATERAL_ATTACHMENTS.includes(attachment.type)) {
+          await processAttachmentEffect(gameId, turnNumber, letter.senderId, letter.recipientId, attachment);
+
+          if (attachment.type === 'declaration_of_war') {
+            events.push({
+              type: 'war_declared',
+              description: `${sender?.countryName ?? '?'} has declared war!`,
+              playerIds: [letter.senderId, letter.recipientId],
+            });
+          }
+        }
+      }
     }
   }
 

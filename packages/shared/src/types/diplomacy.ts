@@ -21,9 +21,40 @@ export type AttachmentType =
   // Intelligence
   | 'share_maps' | 'share_intelligence';
 
+// ─── Attachment Details ───
+
+export interface TradeAttachmentDetails {
+  offeredResources: ResourceTransfer[];
+  requestedResources: ResourceTransfer[];
+  isStanding: boolean;
+}
+
+export interface AllianceAttachmentDetails {
+  tier: AllianceTier;
+  name?: string;
+  terms?: Partial<AllianceTerms>;
+}
+
+/** Map from attachment type → whether it requires recipient acceptance. */
+export const UNILATERAL_ATTACHMENTS: readonly AttachmentType[] = [
+  'declaration_of_war', 'close_trade',
+] as const;
+
+export const PROPOSAL_ATTACHMENTS: readonly AttachmentType[] = [
+  'alliance_proposal', 'nap_proposal',
+  'open_trade', 'trade_route_proposal', 'economic_union',
+  'peace_treaty', 'white_peace',
+  'tribute_demand', 'offer_subsidy', 'loan',
+  'land_cession', 'vassal_offer',
+  'share_maps', 'share_intelligence',
+  'unconditional_surrender',
+] as const;
+
+export type LetterResponse = 'accepted' | 'rejected' | null;
+
 export interface LetterAttachment {
   type: AttachmentType;
-  details?: Record<string, unknown>;
+  details?: TradeAttachmentDetails | AllianceAttachmentDetails | Record<string, unknown>;
 }
 
 export interface Letter {
@@ -37,6 +68,8 @@ export interface Letter {
   deliveryTurn: number;
   isDelivered: boolean;
   isRead: boolean;
+  /** Response to proposal attachments: accepted, rejected, or null (pending/no proposals). */
+  response: LetterResponse;
 }
 
 export type AllianceTier = 'nap' | 'alliance' | 'military_union';

@@ -22,6 +22,7 @@ export const weaponDesignStatusEnum = pgEnum('weapon_design_status', ['developin
 export const equipmentOrderStatusEnum = pgEnum('equipment_order_status', ['active', 'fulfilled', 'cancelled']);
 export const equipmentOrderPriorityEnum = pgEnum('equipment_order_priority', ['relaxed', 'standard', 'rush']);
 export const officerRankEnum = pgEnum('officer_rank', ['major', 'colonel', 'general']);
+export const letterResponseEnum = pgEnum('letter_response', ['accepted', 'rejected']);
 
 // ─── Tables ───
 
@@ -285,6 +286,8 @@ export const letters = pgTable('letters', {
   deliveryTurn: integer('delivery_turn').notNull(),
   isDelivered: boolean('is_delivered').notNull().default(false),
   isRead: boolean('is_read').notNull().default(false),
+  /** Recipient's response to proposal attachments: null = pending/no proposals. */
+  response: letterResponseEnum('response'),
 });
 
 export const tradeAgreements = pgTable('trade_agreements', {

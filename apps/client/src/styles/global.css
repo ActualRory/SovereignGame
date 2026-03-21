@@ -1841,6 +1841,310 @@ h3, h4, h5, h6 {
   background: rgba(74, 138, 181, 0.1);
 }
 
+/* ─── Relations Ribbon ─── */
+
+.relations-ribbon {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.relation-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  border: 1px solid var(--border-dark);
+  background: rgba(90, 72, 50, 0.15);
+  font-size: 12px;
+  font-family: var(--font-heading);
+}
+
+.relation-chip[data-relation="war"] {
+  border-color: var(--accent-red);
+  background: rgba(180, 50, 40, 0.15);
+}
+
+.relation-chip[data-relation="nap"],
+.relation-chip[data-relation="alliance"],
+.relation-chip[data-relation="military_union"] {
+  border-color: var(--accent-green);
+  background: rgba(80, 160, 80, 0.12);
+}
+
+.relation-chip-name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.relation-chip-status {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.relation-chip-alliance {
+  color: var(--accent-gold);
+  font-size: 10px;
+  font-style: italic;
+}
+
+/* ─── Attachments (Compose) ─── */
+
+.attachment-bar {
+  margin-top: 12px;
+  position: relative;
+}
+
+.attachment-add-btn {
+  font-family: var(--font-heading);
+  font-size: 12px;
+  padding: 4px 14px;
+}
+
+.attachment-picker {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface-dark);
+  border: 1px solid var(--border-ornate);
+  border-radius: 6px;
+  padding: 12px;
+  box-shadow: 0 8px 32px var(--shadow-deep);
+  z-index: 10;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.attachment-category {
+  margin-bottom: 8px;
+}
+
+.attachment-category:last-child {
+  margin-bottom: 0;
+}
+
+.attachment-category-label {
+  font-family: var(--font-heading);
+  font-size: 11px;
+  color: var(--accent-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.attachment-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 3px 10px;
+  margin: 2px;
+  border-radius: 12px;
+}
+
+.attachment-option-unilateral {
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+}
+
+.attachment-badge-immediate {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--accent-red);
+  color: #EBE3D3;
+  font-weight: 700;
+}
+
+/* Attached items */
+.attachment-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.attachment-item {
+  border: 1px solid rgba(139, 109, 71, 0.4);
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: rgba(90, 72, 50, 0.08);
+}
+
+.attachment-item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.attachment-seal {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, #c04030, #8b2500);
+  flex-shrink: 0;
+}
+
+.attachment-type-label {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  color: var(--ink-color);
+  font-weight: 600;
+  flex: 1;
+}
+
+.attachment-remove {
+  background: none;
+  border: none;
+  color: var(--accent-red);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+/* Attachment badges on received letters */
+.attachment-list-received {
+  margin-top: 10px;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.attachment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-heading);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(90, 72, 50, 0.15);
+  border: 1px solid rgba(139, 109, 71, 0.3);
+  color: var(--ink-color);
+}
+
+.attachment-badge-war {
+  background: rgba(180, 50, 40, 0.15);
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+}
+
+.attachment-badge-proposal {
+  background: rgba(196, 169, 86, 0.15);
+  border-color: var(--accent-gold);
+}
+
+.attachment-trade-summary {
+  font-size: 11px;
+  color: #8b7355;
+  font-style: italic;
+}
+
+/* Accept/Reject bar */
+.letter-response-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(90, 72, 50, 0.3);
+}
+
+.letter-accept-btn {
+  font-family: var(--font-heading);
+  font-size: 12px;
+  padding: 6px 20px;
+}
+
+.letter-reject-btn {
+  font-family: var(--font-heading);
+  font-size: 12px;
+  padding: 6px 16px;
+}
+
+.letter-status-rejected {
+  background: var(--accent-red);
+  color: #EBE3D3;
+}
+
+/* Attachment detail forms */
+.attachment-detail-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.attachment-detail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.attachment-detail-label {
+  font-family: var(--font-heading);
+  font-size: 11px;
+  color: #8b7355;
+  font-style: italic;
+}
+
+.attachment-resource-row {
+  display: flex;
+  gap: 4px;
+}
+
+.attachment-input-num {
+  width: 60px;
+  padding: 2px 6px;
+  border: 1px solid rgba(90, 72, 50, 0.3);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--ink-color);
+}
+
+.attachment-input-text {
+  flex: 1;
+  padding: 2px 6px;
+  border: 1px solid rgba(90, 72, 50, 0.3);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--ink-color);
+}
+
+.attachment-input-num:focus,
+.attachment-input-text:focus {
+  outline: none;
+  border-color: #8b6d47;
+}
+
+.attachment-add-resource {
+  font-size: 10px;
+  padding: 1px 8px;
+  align-self: flex-start;
+}
+
+.attachment-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--ink-color);
+  cursor: pointer;
+}
+
+.attachment-checkbox input[type="checkbox"] {
+  accent-color: var(--accent-gold);
+}
+
 /* ─── Army Cards (Military Tab) ─── */
 
 .army-card {

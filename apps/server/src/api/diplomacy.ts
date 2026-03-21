@@ -1,7 +1,8 @@
 import { Router, type Router as RouterType } from 'express';
 import { eq, and, or } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
-import { hexDistance } from '@kingdoms/shared';
+import { hexDistance, UNILATERAL_ATTACHMENTS, type LetterAttachment, type AttachmentType } from '@kingdoms/shared';
+import { processAttachmentEffect } from '../game/attachment-effects.js';
 
 export const diplomacyRouter: RouterType = Router();
 
@@ -151,4 +152,40 @@ diplomacyRouter.delete('/:slug/diplomacy/:relationId', async (req, res) => {
 
   await db.delete(schema.diplomacyRelations).where(eq(schema.diplomacyRelations.id, relationId));
   res.json({ success: true });
+});
+
+/** POST /api/games/:slug/letters/:letterId/respond — Accept or reject proposal attachments. */
+diplomacyRouter.post('/:slug/letters/:letterId/respond', async (req, res) => {
+  const { slug, letterId } = req.params;
+  const sessionToken = req.headers['x-session-token'] as string;
+  if (!sessionToken) { res.status(401).json({ error: 'Session token required' }); return; }
+
+  const [game] = await db.select().from(schema.games).where(eq(schema.games.slug, slug));
+  if (!game || game.status !== 'active') { res.status(400).json({ error: 'Game not active' }); return; }
+
+  const [player] = await db.select().from(schema.players).where(eq(schema.players.sessionToken, sessionToken));
+  if (!player || player.gameId !== game.id) { res.status(403).json({ error: 'Not in this game' }); return; }
+
+  const [letter] = await db.select().from(schema.letters).where(eq(schema.letters.id, letterId));
+  if (!letter || letter.recipientId !== player.id) { res.status(404).json({ error: 'Letter not found' }); return; }
+  if (!letter.isDelivered) { res.status(400).json({ error: 'Letter not yet delivered' }); return; }
+  if (letter.response) { res.status(400).json({ error: 'Already responded' }); return; }
+
+  const attachments = (letter.attachments ?? []) as LetterAttachment[];
+  const hasProposals = attachments.some(a => !UNILATERAL_ATTACHMENTS.includes(a.type));
+  if (!hasProposals) { res.status(400).json({ error: 'No proposals to respond to' }); return; }
+
+  const { accept } = req.body;
+  const response = accept ? 'accepted' : 'rejected';
+
+  await db.update(schema.letters).set({ response, isRead: true }).where(eq(schema.letters.id, letterId));
+
+  if (accept) {
+    for (const attachment of attachments) {
+      if (UNILATERAL_ATTACHMENTS.includes(attachment.type)) continue;
+      await processAttachmentEffect(game.id, game.currentTurn, letter.senderId, letter.recipientId, attachment);
+    }
+  }
+
+  res.json({ success: true, response });
 });

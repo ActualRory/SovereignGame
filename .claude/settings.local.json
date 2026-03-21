@@ -27,7 +27,8 @@
       "Read(//c/Users/Rory/Kingdoms Game/$HOME/.rd/**)",
       "Read(//c/Program Files/Rancher Desktop//**)",
       "Read(//c/Users/Rory/AppData/Local/Programs/**)",
-      "Bash(grep -n \"combatLogs\\\\|CombatResult\\\\|CombatRound\" 'c:\\\\Users\\\\Rory\\\\Kingdoms Game\\\\apps\\\\client\\\\src\\\\store\\\\index.ts' c:UsersRoryKingdoms Gameappsclientsrcstoreslices/*.ts)"
+      "Bash(grep -n \"combatLogs\\\\|CombatResult\\\\|CombatRound\" 'c:\\\\Users\\\\Rory\\\\Kingdoms Game\\\\apps\\\\client\\\\src\\\\store\\\\index.ts' c:UsersRoryKingdoms Gameappsclientsrcstoreslices/*.ts)",
+      "Bash(xargs ls:*)"
     ]
   }
 }

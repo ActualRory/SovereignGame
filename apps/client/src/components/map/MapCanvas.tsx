@@ -8,7 +8,7 @@ import {
 import { findPath, hexKey, hexNeighbor, ALL_DIRECTIONS, TERRAIN, RIVER_CROSSING_COST, hasRiverBetween, canEnterHex, type HexCoord, type TerrainType, type HexDirection, type DiplomacyRelation } from '@kingdoms/shared';
 import { generateParchmentTexture, type HexData } from './parchment-generator.js';
 import { generateTerrainTextures, terrainVariant, terrainRotation, clearTerrainTextures } from './terrain-symbols.js';
-import { wobblyLine, hexSeed, mulberry32 } from './wobbly-line.js';
+import { wobblyLine, hexSeed } from './wobbly-line.js';
 import { drawSettlement, drawArmy, drawMoveTargetIndicator } from './map-icons.js';
 import { applyNoiseOverlay } from './noise-overlay.js';
 import { animateMovement } from './movement-animator.js';
@@ -460,99 +460,33 @@ export function MapCanvas() {
       const offsetCorners = corners.map(c => ({ x: c.x + pos.x, y: c.y + pos.y }));
       const borderColor = playerColors.get(h.ownerId) ?? 0x3d3225;
 
-      // Find which edges are border edges
+      // Determine which edges are borders
       const isBorderEdge: boolean[] = [];
       for (let di = 0; di < ALL_DIRECTIONS.length; di++) {
-        const dir = ALL_DIRECTIONS[di];
-        const neighbor = hexNeighbor({ q: h.q, r: h.r }, dir);
+        const neighbor = hexNeighbor({ q: h.q, r: h.r }, ALL_DIRECTIONS[di]);
         const neighborOwner = ownerMap.get(hexKey(neighbor));
         isBorderEdge.push(neighborOwner !== h.ownerId);
       }
 
-      // Chain consecutive border edges into connected runs to eliminate corner gaps.
-      // Find a non-border edge to start scanning from so we don't split a run across
-      // the wrap-around point. If all 6 are borders, scanStart stays 0 and we handle
-      // it as one full-perimeter run.
-      let scanStart = 0;
-      let allBorder = true;
-      for (let i = 0; i < 6; i++) {
-        if (!isBorderEdge[i]) { scanStart = i + 1; allBorder = false; break; }
+      // Draw each border edge individually
+      for (let di = 0; di < 6; di++) {
+        if (!isBorderEdge[di]) continue;
+        const c1 = offsetCorners[di];
+        const c2 = offsetCorners[(di + 1) % 6];
+        const seed = hexSeed(h.q, h.r, di + 100);
+        wobblyLine(borderGraphics, c1, c2, seed, 2);
+        borderGraphics.stroke({ color: borderColor, width: 2.5, alpha: 0.7 });
       }
 
-      if (allBorder) {
-        // Every edge is a border — draw full perimeter as one run
-        drawBorderRun(borderGraphics, offsetCorners, isBorderEdge, 0, 6, h.q, h.r, borderColor);
-      } else {
-        let runStart = -1;
-        for (let step = 0; step < 6; step++) {
-          const di = (scanStart + step) % 6;
-          if (isBorderEdge[di]) {
-            if (runStart === -1) runStart = di;
-          } else {
-            if (runStart !== -1) {
-              drawBorderRun(borderGraphics, offsetCorners, isBorderEdge, runStart, di, h.q, h.r, borderColor);
-              runStart = -1;
-            }
-          }
-        }
-        // Close any trailing run (count consecutive border edges from runStart)
-        if (runStart !== -1) {
-          let count = 0;
-          for (let s = 0; s < 6; s++) {
-            if (!isBorderEdge[(runStart + s) % 6]) break;
-            count++;
-          }
-          drawBorderRun(borderGraphics, offsetCorners, isBorderEdge, runStart, runStart + count, h.q, h.r, borderColor);
+      // Fill corner gaps: where two adjacent border edges meet, draw a small
+      // filled circle at the shared corner so there's no visible seam.
+      for (let di = 0; di < 6; di++) {
+        if (isBorderEdge[di] && isBorderEdge[(di + 1) % 6]) {
+          const corner = offsetCorners[(di + 1) % 6];
+          borderGraphics.circle(corner.x, corner.y, 1.4);
+          borderGraphics.fill({ color: borderColor, alpha: 0.7 });
         }
       }
-    }
-
-    /** Draw a connected chain of border edges as a single continuous path. */
-    function drawBorderRun(
-      g: Graphics,
-      offsetCorners: { x: number; y: number }[],
-      _isBorderEdge: boolean[],
-      startEdge: number,
-      endEdge: number,
-      q: number,
-      r: number,
-      color: number
-    ) {
-      const firstCorner = offsetCorners[startEdge % 6];
-      g.moveTo(firstCorner.x, firstCorner.y);
-
-      for (let di = startEdge; di < endEdge; di++) {
-        const idx = di % 6;
-        const c1 = offsetCorners[idx];
-        const c2 = offsetCorners[(idx + 1) % 6];
-        const seed = hexSeed(q, r, idx + 100);
-
-        // Inline wobbly curve without moveTo (continuing from previous endpoint)
-        const dx = c2.x - c1.x;
-        const dy = c2.y - c1.y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        if (len < 0.001) continue;
-        const nx = -dy / len;
-        const ny = dx / len;
-        const rng = mulberry32(seed);
-
-        // Two intermediate wobble points
-        for (let si = 1; si <= 2; si++) {
-          const t = si / 3;
-          const offset = (rng() * 2 - 1) * 2;
-          const pt = { x: c1.x + dx * t + nx * offset, y: c1.y + dy * t + ny * offset };
-          const nextT = (si + 1) / 3;
-          const nextOffset = si < 2 ? (rng() * 2 - 1) * 2 : 0;
-          const nextPt = si < 2
-            ? { x: c1.x + dx * nextT + nx * nextOffset, y: c1.y + dy * nextT + ny * nextOffset }
-            : c2;
-          const mid = { x: (pt.x + nextPt.x) / 2, y: (pt.y + nextPt.y) / 2 };
-          g.quadraticCurveTo(pt.x, pt.y, mid.x, mid.y);
-        }
-        g.lineTo(c2.x, c2.y);
-      }
-
-      g.stroke({ color, width: 2.5, alpha: 0.7 });
     }
 
     // ── Layer 5: Fog of war overlay (sepia washes) ──

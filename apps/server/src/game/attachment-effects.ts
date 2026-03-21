@@ -112,8 +112,31 @@ export async function processAttachmentEffect(
       await upsertRelation(gameId, currentTurn, recipientId, senderId, 'vassal');
       break;
 
-    // ── Intelligence (no-op for now, handled elsewhere) ──
-    case 'share_maps':
+    // ── Intelligence ──
+    case 'share_maps': {
+      // Copy sender's explored hexes to recipient as soft_fog
+      // (they learn terrain but don't get live full_vision)
+      const senderVis = await db.select().from(schema.hexVisibility)
+        .where(and(
+          eq(schema.hexVisibility.gameId, gameId),
+          eq(schema.hexVisibility.playerId, senderId),
+        ));
+
+      for (const row of senderVis) {
+        if (row.state === 'undiscovered') continue;
+
+        // Insert as soft_fog; if recipient already has any visibility, don't downgrade
+        await db.insert(schema.hexVisibility).values({
+          gameId,
+          playerId: recipientId,
+          q: row.q,
+          r: row.r,
+          state: 'soft_fog',
+        }).onConflictDoNothing();
+      }
+      break;
+    }
+
     case 'share_intelligence':
     case 'tribute_demand':
     case 'offer_subsidy':

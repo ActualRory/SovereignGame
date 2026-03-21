@@ -20,7 +20,7 @@ const ATTACHMENT_LABELS: Record<AttachmentType, string> = {
   offer_subsidy: 'Offer Subsidy',
   loan: 'Loan',
   land_cession: 'Land Cession',
-  vassal_offer: 'Vassal Offer',
+  vassal_offer: 'Demand Vassalage',
   share_maps: 'Share Maps',
   share_intelligence: 'Share Intelligence',
 };

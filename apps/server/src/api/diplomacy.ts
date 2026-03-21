@@ -35,10 +35,12 @@ diplomacyRouter.post('/:slug/letters', async (req, res) => {
 
   let deliveryDelay = 1; // minimum 1 turn
   if (senderCap && recipientCap) {
-    deliveryDelay = Math.max(1, hexDistance(
+    const dist = hexDistance(
       { q: senderCap.hexQ, r: senderCap.hexR },
       { q: recipientCap.hexQ, r: recipientCap.hexR },
-    ));
+    );
+    // Letters travel ~3x faster than armies (riders/pigeons)
+    deliveryDelay = Math.max(1, Math.ceil(dist / 3));
   }
 
   const [letter] = await db.insert(schema.letters).values({

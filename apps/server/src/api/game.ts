@@ -14,193 +14,203 @@ gameRouter.post('/:slug/start', async (req, res) => {
   const { slug } = req.params;
   const { sessionToken } = req.body as { sessionToken: string };
 
-  const [game] = await db.select()
-    .from(schema.games)
-    .where(eq(schema.games.slug, slug));
+  try {
+    const result = await db.transaction(async (tx) => {
+      // Lock the game row to prevent concurrent starts
+      const [game] = await tx.select()
+        .from(schema.games)
+        .where(eq(schema.games.slug, slug))
+        .for('update');
 
-  if (!game) {
-    res.status(404).json({ error: 'Game not found' });
-    return;
-  }
-
-  const [hostPlayer] = await db.select()
-    .from(schema.players)
-    .where(eq(schema.players.sessionToken, sessionToken));
-
-  if (!hostPlayer || hostPlayer.id !== game.hostPlayerId) {
-    res.status(403).json({ error: 'Only the host can start the game' });
-    return;
-  }
-
-  if (game.status !== 'lobby') {
-    res.status(400).json({ error: 'Game already started' });
-    return;
-  }
-
-  const gamePlayers = await db.select()
-    .from(schema.players)
-    .where(eq(schema.players.gameId, game.id));
-
-  if (gamePlayers.length < 2) {
-    res.status(400).json({ error: 'Need at least 2 players' });
-    return;
-  }
-
-  // Load map
-  if (!game.mapId) {
-    res.status(400).json({ error: 'No map selected' });
-    return;
-  }
-
-  const [map] = await db.select()
-    .from(schema.maps)
-    .where(eq(schema.maps.id, game.mapId));
-
-  if (!map) {
-    res.status(400).json({ error: 'Map not found' });
-    return;
-  }
-
-  const mapHexes = map.hexData as Array<{
-    q: number; r: number; terrain: string; resources: string[]; riverEdges: string[];
-  }>;
-  const playerStarts = map.playerStarts as Array<{
-    slotIndex: number; q: number; r: number; claimedHexes: Array<{ q: number; r: number }>;
-  }>;
-
-  // Create game hexes
-  for (const hex of mapHexes) {
-    // Determine ownership from player starts
-    let ownerId: string | null = null;
-    for (const start of playerStarts) {
-      const matchingPlayer = gamePlayers.find(p => p.slotIndex === start.slotIndex);
-      if (!matchingPlayer) continue;
-      const isClaimed = start.claimedHexes.some(c => c.q === hex.q && c.r === hex.r)
-        || (start.q === hex.q && start.r === hex.r);
-      if (isClaimed) {
-        ownerId = matchingPlayer.id;
-        break;
+      if (!game) {
+        return { status: 404, error: 'Game not found' } as const;
       }
-    }
 
-    await db.insert(schema.gameHexes).values({
-      gameId: game.id,
-      q: hex.q,
-      r: hex.r,
-      terrain: hex.terrain,
-      resources: hex.resources,
-      riverEdges: hex.riverEdges || [],
-      ownerId,
-    });
-  }
+      const [hostPlayer] = await tx.select()
+        .from(schema.players)
+        .where(eq(schema.players.sessionToken, sessionToken));
 
-  // Create starting settlements, buildings, units, and set gold for each player
-  const startTier = STARTING_CONDITIONS.settlement.tier;
-  const startPop = Math.floor(
-    SETTLEMENT_TIERS[startTier].popCap * STARTING_CONDITIONS.populationFraction
-  );
+      if (!hostPlayer || hostPlayer.id !== game.hostPlayerId) {
+        return { status: 403, error: 'Only the host can start the game' } as const;
+      }
 
-  for (const player of gamePlayers) {
-    const start = playerStarts.find(s => s.slotIndex === player.slotIndex);
-    if (!start) continue;
+      if (game.status !== 'lobby') {
+        return { status: 400, error: 'Game already started' } as const;
+      }
 
-    // Create settlement
-    const [settlement] = await db.insert(schema.settlements).values({
-      gameId: game.id,
-      hexQ: start.q,
-      hexR: start.r,
-      ownerId: player.id,
-      name: `${player.countryName} Capital`,
-      tier: startTier,
-      population: startPop,
-      popCap: SETTLEMENT_TIERS[startTier].popCap,
-      isCapital: true,
-      storage: {},
-    }).returning();
+      const gamePlayers = await tx.select()
+        .from(schema.players)
+        .where(eq(schema.players.gameId, game.id));
 
-    // Link settlement to hex
-    await db.update(schema.gameHexes)
-      .set({ settlementId: settlement.id })
-      .where(
-        and(
-          eq(schema.gameHexes.gameId, game.id),
-          eq(schema.gameHexes.q, start.q),
-          eq(schema.gameHexes.r, start.r),
-        )
-      );
+      if (gamePlayers.length < 2) {
+        return { status: 400, error: 'Need at least 2 players' } as const;
+      }
 
-    // Create starting buildings
-    for (let i = 0; i < STARTING_CONDITIONS.buildings.length; i++) {
-      await db.insert(schema.buildings).values({
-        settlementId: settlement.id,
-        type: STARTING_CONDITIONS.buildings[i],
-        slotIndex: i,
-      });
-    }
+      // Load map
+      if (!game.mapId) {
+        return { status: 400, error: 'No map selected' } as const;
+      }
 
-    // Create starting army
-    const [army] = await db.insert(schema.armies).values({
-      gameId: game.id,
-      ownerId: player.id,
-      name: `${player.countryName} 1st Army`,
-      hexQ: start.q,
-      hexR: start.r,
-    }).returning();
+      const [map] = await tx.select()
+        .from(schema.maps)
+        .where(eq(schema.maps.id, game.mapId));
 
-    // Create starting Irregulars template for each player
-    const [irregularsTemplate] = await db.insert(schema.unitTemplates).values({
-      gameId: game.id,
-      playerId: player.id,
-      name: 'Irregulars',
-      isIrregular: true,
-      isMounted: false,
-      companiesOrSquadrons: 3,
-      primary: null,
-      secondary: null,
-      sidearm: null,
-      armour: null,
-      mount: null,
-      primaryDesignId: null,
-      secondaryDesignId: null,
-      sidearmDesignId: null,
-    }).returning();
+      if (!map) {
+        return { status: 400, error: 'Map not found' } as const;
+      }
 
-    // Create starting units using the new template system
-    for (const unitDef of STARTING_CONDITIONS.units) {
-      for (let i = 0; i < unitDef.count; i++) {
-        await db.insert(schema.units).values({
-          armyId: army.id,
-          templateId: irregularsTemplate.id,
-          position: 'frontline',
-          troopCounts: { rookie: 300, capable: 0, veteran: 0 },
-          state: 'full',
-          xp: 0,
-          heldEquipment: { primary: 0, sidearm: 0, armour: 0, mounts: 0 },
-          isOutdated: false,
-          mountBreed: null,
+      const mapHexes = map.hexData as Array<{
+        q: number; r: number; terrain: string; resources: string[]; riverEdges: string[];
+      }>;
+      const playerStarts = map.playerStarts as Array<{
+        slotIndex: number; q: number; r: number; claimedHexes: Array<{ q: number; r: number }>;
+      }>;
+
+      // Mark game as active early (inside transaction) to prevent races
+      await tx.update(schema.games)
+        .set({ status: 'active', currentTurn: 1 })
+        .where(eq(schema.games.id, game.id));
+
+      // Create game hexes
+      for (const hex of mapHexes) {
+        // Determine ownership from player starts
+        let ownerId: string | null = null;
+        for (const start of playerStarts) {
+          const matchingPlayer = gamePlayers.find(p => p.slotIndex === start.slotIndex);
+          if (!matchingPlayer) continue;
+          const isClaimed = start.claimedHexes.some(c => c.q === hex.q && c.r === hex.r)
+            || (start.q === hex.q && start.r === hex.r);
+          if (isClaimed) {
+            ownerId = matchingPlayer.id;
+            break;
+          }
+        }
+
+        await tx.insert(schema.gameHexes).values({
+          gameId: game.id,
+          q: hex.q,
+          r: hex.r,
+          terrain: hex.terrain,
+          resources: hex.resources,
+          riverEdges: hex.riverEdges || [],
+          ownerId,
         });
       }
+
+      // Create starting settlements, buildings, units, and set gold for each player
+      const startTier = STARTING_CONDITIONS.settlement.tier;
+      const startPop = Math.floor(
+        SETTLEMENT_TIERS[startTier].popCap * STARTING_CONDITIONS.populationFraction
+      );
+
+      for (const player of gamePlayers) {
+        const start = playerStarts.find(s => s.slotIndex === player.slotIndex);
+        if (!start) continue;
+
+        // Create settlement
+        const [settlement] = await tx.insert(schema.settlements).values({
+          gameId: game.id,
+          hexQ: start.q,
+          hexR: start.r,
+          ownerId: player.id,
+          name: `${player.countryName} Capital`,
+          tier: startTier,
+          population: startPop,
+          popCap: SETTLEMENT_TIERS[startTier].popCap,
+          isCapital: true,
+          storage: {},
+        }).returning();
+
+        // Link settlement to hex
+        await tx.update(schema.gameHexes)
+          .set({ settlementId: settlement.id })
+          .where(
+            and(
+              eq(schema.gameHexes.gameId, game.id),
+              eq(schema.gameHexes.q, start.q),
+              eq(schema.gameHexes.r, start.r),
+            )
+          );
+
+        // Create starting buildings
+        for (let i = 0; i < STARTING_CONDITIONS.buildings.length; i++) {
+          await tx.insert(schema.buildings).values({
+            settlementId: settlement.id,
+            type: STARTING_CONDITIONS.buildings[i],
+            slotIndex: i,
+          });
+        }
+
+        // Create starting army
+        const [army] = await tx.insert(schema.armies).values({
+          gameId: game.id,
+          ownerId: player.id,
+          name: `${player.countryName} 1st Army`,
+          hexQ: start.q,
+          hexR: start.r,
+        }).returning();
+
+        // Create starting Irregulars template for each player
+        const [irregularsTemplate] = await tx.insert(schema.unitTemplates).values({
+          gameId: game.id,
+          playerId: player.id,
+          name: 'Irregulars',
+          isIrregular: true,
+          isMounted: false,
+          companiesOrSquadrons: 3,
+          primary: null,
+          secondary: null,
+          sidearm: null,
+          armour: null,
+          mount: null,
+          primaryDesignId: null,
+          secondaryDesignId: null,
+          sidearmDesignId: null,
+        }).returning();
+
+        // Create starting units using the new template system
+        for (const unitDef of STARTING_CONDITIONS.units) {
+          for (let i = 0; i < unitDef.count; i++) {
+            await tx.insert(schema.units).values({
+              armyId: army.id,
+              templateId: irregularsTemplate.id,
+              position: 'frontline',
+              troopCounts: { rookie: 300, capable: 0, veteran: 0 },
+              state: 'full',
+              xp: 0,
+              heldEquipment: { primary: 0, sidearm: 0, armour: 0, mounts: 0 },
+              isOutdated: false,
+              mountBreed: null,
+            });
+          }
+        }
+
+        // Set player gold and stability
+        await tx.update(schema.players)
+          .set({
+            gold: STARTING_CONDITIONS.gold,
+            stability: STARTING_CONDITIONS.stability,
+            taxRate: STARTING_CONDITIONS.taxRate,
+          })
+          .where(eq(schema.players.id, player.id));
+      }
+
+      return { gameId: game.id } as const;
+    });
+
+    if ('error' in result) {
+      res.status(result.status).json({ error: result.error });
+      return;
     }
 
-    // Set player gold and stability
-    await db.update(schema.players)
-      .set({
-        gold: STARTING_CONDITIONS.gold,
-        stability: STARTING_CONDITIONS.stability,
-        taxRate: STARTING_CONDITIONS.taxRate,
-      })
-      .where(eq(schema.players.id, player.id));
+    // Start turn 1 outside the transaction (sets up timer for blitz/standard modes)
+    await startTurn(result.gameId, 1);
+
+    res.json({ success: true, currentTurn: 1 });
+  } catch (err) {
+    console.error('Game start failed:', err);
+    res.status(500).json({ error: 'Failed to start game' });
   }
-
-  // Start the game and the first turn
-  await db.update(schema.games)
-    .set({ status: 'active', currentTurn: 1 })
-    .where(eq(schema.games.id, game.id));
-
-  // Start turn 1 (sets up timer for blitz/standard modes)
-  await startTurn(game.id, 1);
-
-  res.json({ success: true, currentTurn: 1 });
 });
 
 /** GET /api/games/:slug/state — Get filtered game state for a player. */

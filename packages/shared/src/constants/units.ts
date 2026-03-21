@@ -65,7 +65,7 @@ export function getBaseStats(
   if (isIrregular) {
     return {
       fire: 1, shock: 3, defence: 2,
-      morale: 2 + Math.floor((companiesOrSquadrons - 1) * 0.5),
+      morale: 2 + (companiesOrSquadrons - 1),
       armour: 0, ap: 0, hitsOn: 14,
       defaultPosition: position,
       maxTroops,
@@ -80,7 +80,7 @@ export function getBaseStats(
       fire: 1,
       shock: 4,
       defence: 2,
-      morale: 3 + Math.floor(sizeBonus * 0.5),
+      morale: 3 + sizeBonus,
       armour: 0, ap: 0,
       hitsOn: 12, // mounted units are harder to hit
       defaultPosition: 'flank',
@@ -93,7 +93,7 @@ export function getBaseStats(
       fire: 2,
       shock: 1,
       defence: 2,
-      morale: 2 + Math.floor(sizeBonus * 0.5),
+      morale: 2 + sizeBonus,
       armour: 0, ap: 0,
       hitsOn: 13,
       defaultPosition: 'backline',
@@ -106,7 +106,7 @@ export function getBaseStats(
     fire: 1,
     shock: 3,
     defence: 2,
-    morale: 2 + Math.floor(sizeBonus * 0.5),
+    morale: 2 + sizeBonus,
     armour: 0, ap: 0,
     hitsOn: 14,
     defaultPosition: 'frontline',

@@ -21,6 +21,7 @@ import {
   DICE_SIDES, MAX_COMBAT_ROUNDS,
   COMMAND_BONUS_PER_POINT, COMMAND_WIDTH_PER_2_POINTS,
   MANEUVER_WARFARE_WIDTH_BONUS, MODERN_DOCTRINE_BONUS,
+  DICE_MULTIPLIER,
 } from '../constants/combat.js';
 
 // ── Seeded PRNG (mulberry32) ──
@@ -378,11 +379,13 @@ function resolvePhase(
   for (const unit of attackingUnits) {
     if (totalTroops(unit.troopCounts) <= 0 || unit.isBroken) continue;
 
-    const baseDice = phase === 'fire' ? unit.fire : unit.shock;
-    if (baseDice === 0) continue;
+    const baseStat = phase === 'fire' ? unit.fire : unit.shock;
+    if (baseStat === 0) continue;
 
+    const troops = totalTroops(unit.troopCounts);
+    const troopScale = troops / 100; // 100 troops = 1×, 500 troops = 5×
     const stateMultiplier = STATE_DICE_MULTIPLIER[unit.state] ?? 1;
-    const numDice = Math.max(1, Math.round(baseDice * stateMultiplier));
+    const numDice = Math.max(1, Math.round(baseStat * troopScale * DICE_MULTIPLIER * stateMultiplier));
 
     // Weighted veterancy modifier reduces hitsOn threshold
     const vetMod = getWeightedVeterancyModifier(unit.troopCounts.rookie, unit.troopCounts.capable, unit.troopCounts.veteran);
@@ -605,12 +608,12 @@ export function computeUnitStats(
   }
 
   return {
-    fire:    Math.max(0, Math.round(fire)),
-    shock:   Math.max(0, Math.round(shock)),
-    defence: Math.max(0, Math.round(defence)),
+    fire:    Math.max(0, fire),
+    shock:   Math.max(0, shock),
+    defence: Math.max(0, defence),
     morale:  Math.max(1, Math.round(morale)),
-    armour:  Math.max(0, Math.round(armour)),
-    ap:      Math.max(0, Math.round(ap)),
+    armour:  Math.max(0, armour),
+    ap:      Math.max(0, ap),
     hitsOn:  Math.max(1, Math.round(hitsOn)),
   };
 }

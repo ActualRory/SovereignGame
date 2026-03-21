@@ -18,6 +18,9 @@ export const COMMAND_WIDTH_PER_2_POINTS = 1;
 /** Modern Doctrine tech: +1 to all combat rolls. */
 export const MODERN_DOCTRINE_BONUS = 1;
 
+/** Dice multiplier: scales dice count for granularity without changing lethality. */
+export const DICE_MULTIPLIER = 4;
+
 /** Siege assault: defender fires first, then attacker fires, then attacker resolves shock. */
 export const SIEGE_PHASES = ['defender_fire', 'attacker_fire', 'attacker_shock'] as const;
 

@@ -586,13 +586,18 @@ function EquipmentPicker({ label, options, getDef, value, onChange, researchedTe
 
 // ─── Stat preview bar ──────────────────────────────────────────────────────
 
+function fmtStat(v: number | string): string {
+  if (typeof v === 'string') return v;
+  return v % 1 === 0 ? String(v) : v.toFixed(1);
+}
+
 function StatsPreview({ stats }: { stats: { fire: number; shock: number; defence: number; morale: number; armour: number; ap: number; hitsOn: number } }) {
   return (
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8, fontSize: 12 }}>
       {[['Fire', stats.fire], ['Shock', stats.shock], ['Def', stats.defence], ['Morale', stats.morale], ['Armour', stats.armour], ['AP', stats.ap], ['Hits', `${stats.hitsOn}+`]].map(([label, val]) => (
         <div key={label as string} style={{ textAlign: 'center', minWidth: 36 }}>
           <div style={{ color: 'var(--text-muted)', marginBottom: 2 }}>{label}</div>
-          <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{val}</div>
+          <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{fmtStat(val as number | string)}</div>
         </div>
       ))}
     </div>

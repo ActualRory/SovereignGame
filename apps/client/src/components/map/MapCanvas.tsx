@@ -379,8 +379,8 @@ export function MapCanvas() {
         // Skip this edge if both hexes share the same owner
         if (myOwner && myOwner === neighborOwner) continue;
 
-        const c1 = offsetCorners[di];
-        const c2 = offsetCorners[(di + 1) % 6];
+        const c1 = offsetCorners[(di + 5) % 6];
+        const c2 = offsetCorners[di];
         gridLayer.moveTo(c1.x, c1.y);
         gridLayer.lineTo(c2.x, c2.y);
         gridLayer.stroke({ color: HEX_GRID_COLOR, width: 0.7, alpha: HEX_GRID_ALPHA });
@@ -428,8 +428,8 @@ export function MapCanvas() {
       for (const edge of h.riverEdges as string[]) {
         const idx = DIR_EDGE_INDEX[edge];
         if (idx === undefined) continue;
-        const c1 = offsetCorners[idx];
-        const c2 = offsetCorners[(idx + 1) % 6];
+        const c1 = offsetCorners[(idx + 5) % 6];
+        const c2 = offsetCorners[idx];
         const seed = hexSeed(h.q, h.r, idx);
 
         // Primary river stroke
@@ -471,8 +471,8 @@ export function MapCanvas() {
       // Draw each border edge individually
       for (let di = 0; di < 6; di++) {
         if (!isBorderEdge[di]) continue;
-        const c1 = offsetCorners[di];
-        const c2 = offsetCorners[(di + 1) % 6];
+        const c1 = offsetCorners[(di + 5) % 6];
+        const c2 = offsetCorners[di];
         const seed = hexSeed(h.q, h.r, di + 100);
         wobblyLine(borderGraphics, c1, c2, seed, 2);
         borderGraphics.stroke({ color: borderColor, width: 2.5, alpha: 0.7 });
@@ -482,7 +482,7 @@ export function MapCanvas() {
       // filled circle at the shared corner so there's no visible seam.
       for (let di = 0; di < 6; di++) {
         if (isBorderEdge[di] && isBorderEdge[(di + 1) % 6]) {
-          const corner = offsetCorners[(di + 1) % 6];
+          const corner = offsetCorners[di];
           borderGraphics.circle(corner.x, corner.y, 1.4);
           borderGraphics.fill({ color: borderColor, alpha: 0.7 });
         }

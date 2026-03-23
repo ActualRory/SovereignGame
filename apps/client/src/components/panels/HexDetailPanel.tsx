@@ -153,7 +153,9 @@ export function HexDetailPanel() {
       {settlement && (
         <div style={{ marginBottom: 12 }}>
           <span className="stat-label">Settlement</span>
-          <div className="settlement-card">
+          <div className="settlement-card" style={{ cursor: 'pointer' }} onClick={() => {
+            useStore.getState().setSelectedSettlementId((settlement as any).id);
+          }} title="Click for details">
             <div className="settlement-header">
               <strong>{(settlement as any).name}</strong>
               <span className="settlement-tier" style={{ textTransform: 'capitalize' }}>

@@ -423,11 +423,16 @@ gameRouter.get('/:slug/state', async (req, res) => {
   }
 });
 
-/** POST /api/games/:slug/player/flag — Update player flag data and optionally color. */
+/** POST /api/games/:slug/player/flag — Update player flag data, color, country/ruler names. */
 gameRouter.post('/:slug/player/flag', async (req, res) => {
   const { slug } = req.params;
   const sessionToken = req.headers['x-session-token'] as string;
-  const { flagData, color } = req.body as { flagData?: Record<string, unknown>; color?: string };
+  const { flagData, color, countryName, rulerName } = req.body as {
+    flagData?: Record<string, unknown>;
+    color?: string;
+    countryName?: string;
+    rulerName?: string;
+  };
 
   if (!sessionToken) {
     res.status(401).json({ error: 'Session token required' });
@@ -455,6 +460,14 @@ gameRouter.post('/:slug/player/flag', async (req, res) => {
   const updateFields: Record<string, unknown> = {};
   if (flagData) updateFields.flagData = flagData;
   if (color) updateFields.color = color;
+  if (countryName !== undefined) {
+    const trimmed = countryName.trim().slice(0, 40);
+    if (trimmed) updateFields.countryName = trimmed;
+  }
+  if (rulerName !== undefined) {
+    const trimmed = rulerName.trim().slice(0, 40);
+    if (trimmed) updateFields.rulerName = trimmed;
+  }
 
   if (Object.keys(updateFields).length > 0) {
     await db.update(schema.players)

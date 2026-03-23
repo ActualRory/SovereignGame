@@ -23,6 +23,8 @@ export interface UiSlice {
   isAnimatingMovement: boolean;
   /** Set to true when a turn just resolved; cleared after animation plays or is skipped */
   turnJustResolved: boolean;
+  /** Settlement ID to show in the detail panel (null = closed) */
+  selectedSettlementId: string | null;
   /** Combat log ID to show in the battle overlay (null = closed) */
   battleViewId: string | null;
   setActiveTab: (tab: TabId | null) => void;
@@ -31,6 +33,7 @@ export interface UiSlice {
   setMapContextMenu: (menu: MapContextMenu | null) => void;
   setIsSelectingMoveTarget: (v: boolean) => void;
   setDetailPanelHex: (hex: { q: number; r: number } | null) => void;
+  setSelectedSettlementId: (id: string | null) => void;
   setPanToHex: (hex: { q: number; r: number } | null) => void;
   setIsAnimatingMovement: (v: boolean) => void;
   setTurnJustResolved: (v: boolean) => void;
@@ -44,6 +47,7 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   mapContextMenu: null,
   isSelectingMoveTarget: false,
   detailPanelHex: null,
+  selectedSettlementId: null,
   panToHex: null,
   isAnimatingMovement: false,
   turnJustResolved: false,
@@ -56,6 +60,7 @@ export const createUiSlice: StateCreator<UiSlice> = (set) => ({
   setMapContextMenu: (menu) => set({ mapContextMenu: menu }),
   setIsSelectingMoveTarget: (v) => set({ isSelectingMoveTarget: v }),
   setDetailPanelHex: (hex) => set({ detailPanelHex: hex }),
+  setSelectedSettlementId: (id) => set({ selectedSettlementId: id }),
   setPanToHex: (hex) => set({ panToHex: hex }),
   setIsAnimatingMovement: (v) => set({ isAnimatingMovement: v }),
   setTurnJustResolved: (v) => set({ turnJustResolved: v }),

@@ -105,7 +105,9 @@ export function EconomyTab() {
       {/* Per-Settlement Breakdown */}
       <h3 style={{ marginTop: 24 }}>Settlements</h3>
       {mySettlements.map((s: any) => (
-        <SettlementCard key={s.id} settlement={s} />
+        <SettlementCard key={s.id} settlement={s} onSelect={() => {
+          useStore.getState().setSelectedSettlementId(s.id);
+        }} />
       ))}
 
       {/* Building Codex */}
@@ -114,7 +116,7 @@ export function EconomyTab() {
   );
 }
 
-function SettlementCard({ settlement }: { settlement: any }) {
+function SettlementCard({ settlement, onSelect }: { settlement: any; onSelect: () => void }) {
   const storage = (settlement.storage ?? {}) as Record<string, number>;
   const resources = Object.entries(storage).filter(([, v]) => v > 0);
   const tierDef = SETTLEMENT_TIERS[settlement.tier as SettlementTier];
@@ -123,7 +125,7 @@ function SettlementCard({ settlement }: { settlement: any }) {
   const buildingCount = ((settlement.buildings ?? []) as any[]).filter((b: any) => !b.isConstructing).length;
 
   return (
-    <div className="settlement-card">
+    <div className="settlement-card" style={{ cursor: 'pointer' }} onClick={onSelect} title="Click for details">
       <div className="settlement-header">
         <strong>{settlement.name}</strong>
         <Tooltip content={

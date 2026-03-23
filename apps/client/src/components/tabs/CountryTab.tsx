@@ -52,11 +52,27 @@ export function CountryTab() {
     <div className="country-tab">
       <div className="country-header" style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
         <FlagPreview flagData={(player as any).flagData} color={(player as any).color} />
-        <div>
-          <h2>{player.countryName as string}</h2>
-          <p style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>
-            Ruled by {player.rulerName as string}
-          </p>
+        <div style={{ flex: 1 }}>
+          <EditableName
+            slug={slug!}
+            player={player}
+            field="countryName"
+            label=""
+            value={player.countryName as string}
+            renderDisplay={(v) => <h2 style={{ cursor: 'pointer' }} title="Click to rename">{v}</h2>}
+          />
+          <EditableName
+            slug={slug!}
+            player={player}
+            field="rulerName"
+            label="Ruled by "
+            value={player.rulerName as string}
+            renderDisplay={(v) => (
+              <p style={{ fontStyle: 'italic', color: 'var(--text-muted)', cursor: 'pointer' }} title="Click to rename">
+                Ruled by {v}
+              </p>
+            )}
+          />
         </div>
       </div>
 
@@ -153,6 +169,90 @@ export function CountryTab() {
       </ul>
     </div>
   );
+}
+
+function EditableName({
+  slug,
+  player,
+  field,
+  label,
+  value,
+  renderDisplay,
+}: {
+  slug: string;
+  player: Record<string, unknown>;
+  field: 'countryName' | 'rulerName';
+  label: string;
+  value: string;
+  renderDisplay: (v: string) => React.ReactNode;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    const trimmed = draft.trim();
+    if (!trimmed || trimmed === value) {
+      setEditing(false);
+      setDraft(value);
+      return;
+    }
+    setSaving(true);
+    const sessionToken = localStorage.getItem(`session:${slug}`);
+    try {
+      await fetch(`/api/games/${slug}/player/flag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': sessionToken ?? '' },
+        body: JSON.stringify({ [field]: trimmed }),
+      });
+      useStore.getState().setGameState({
+        player: { ...player, [field]: trimmed },
+        players: useStore.getState().players.map((p: any) =>
+          p.id === (player as any).id ? { ...p, [field]: trimmed } : p
+        ),
+      });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {label && <span style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>{label}</span>}
+        <input
+          type="text"
+          value={draft}
+          maxLength={40}
+          autoFocus
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') save();
+            if (e.key === 'Escape') { setEditing(false); setDraft(value); }
+          }}
+          style={{ fontSize: 'inherit', padding: '2px 6px', flex: 1, minWidth: 0 }}
+        />
+        <button
+          className="btn btn-primary"
+          style={{ fontSize: 11, padding: '2px 8px' }}
+          onClick={save}
+          disabled={saving}
+        >
+          {saving ? '...' : 'Save'}
+        </button>
+        <button
+          className="btn"
+          style={{ fontSize: 11, padding: '2px 8px' }}
+          onClick={() => { setEditing(false); setDraft(value); }}
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  return <div onClick={() => { setDraft(value); setEditing(true); }}>{renderDisplay(value)}</div>;
 }
 
 function FlagPreview({ flagData, color }: { flagData: any; color: string }) {

@@ -1374,7 +1374,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
           name: nobleName,
           familyId,
           age,
-          birthTurn: currentTurn,
+          birthTurn: turnNumber,
           branch: nobleOrder.branch,
           rank: startRank,
           birthSettlementId: settlement.id,
@@ -2287,7 +2287,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       .where(and(eq(schema.nobles.gameId, gameId), eq(schema.nobles.isAlive, true)));
 
     // Aging: every MINOR_TURNS_PER_YEAR turns (once per year), increment age
-    if (currentTurn % MINOR_TURNS_PER_YEAR === 0) {
+    if (turnNumber % MINOR_TURNS_PER_YEAR === 0) {
       const livingNobles = await db.select().from(schema.nobles)
         .where(and(eq(schema.nobles.gameId, gameId), eq(schema.nobles.isAlive, true)));
 
@@ -2331,7 +2331,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
 
       const nobleCap = estateCount * NOBLES_PER_ESTATE;
       const lastGen = settlement.lastNobleGeneratedTurn ?? 0;
-      if (currentTurn - lastGen < NOBLE_GENERATION_DELAY_TURNS) continue;
+      if (turnNumber - lastGen < NOBLE_GENERATION_DELAY_TURNS) continue;
 
       // Count living nobles born at this settlement
       const noblesHere = await db.select().from(schema.nobles)
@@ -2345,7 +2345,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       if (noblesHere.length >= nobleCap) continue;
 
       // Auto-generate a noble
-      const genRng = mulberry32(currentTurn ^ parseInt(settlement.id.slice(0, 8), 16));
+      const genRng = mulberry32(turnNumber ^ parseInt(settlement.id.slice(0, 8), 16));
       const { firstName, surname } = generateNobleName(genRng);
       const age = generateNobleAge(genRng);
       const martial = generateNobleStat(genRng);
@@ -2379,7 +2379,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         name: `${firstName} ${surname}`,
         familyId,
         age,
-        birthTurn: currentTurn,
+        birthTurn: turnNumber,
         branch: branch as any,
         rank: startRank,
         birthSettlementId: settlement.id,
@@ -2389,7 +2389,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       });
 
       await db.update(schema.settlements)
-        .set({ lastNobleGeneratedTurn: currentTurn })
+        .set({ lastNobleGeneratedTurn: turnNumber })
         .where(eq(schema.settlements.id, settlement.id));
 
       events.push({

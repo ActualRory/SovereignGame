@@ -15,6 +15,7 @@ import { GameOverOverlay } from '../panels/GameOverOverlay.js';
 import { BattleOverlay } from '../panels/BattleOverlay.js';
 import { SiegePanel } from '../panels/SiegePanel.js';
 import { SettlementDetailPanel } from '../panels/SettlementDetailPanel.js';
+import { ArmyDetailPanel } from '../panels/ArmyDetailPanel.js';
 
 let notifCounter = 0;
 
@@ -136,6 +137,7 @@ export function GamePage() {
         <MapContextMenu />
         <TabOverlay />
         {!activeTab && <HexDetailPanel />}
+        {!activeTab && <ArmyDetailPanel />}
         <SettlementDetailPanel />
         <CombatLogPanel />
         <EventLogPanel />

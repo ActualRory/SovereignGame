@@ -219,6 +219,7 @@ export function HexDetailPanel() {
             const armyOwner = players.find((p: any) => p.id === a.ownerId);
             const isOwnArmy = a.ownerId === playerId;
             const isSelected = selectedArmyId === a.id;
+            const unitCount = a.units?.filter((u: any) => u.state !== 'destroyed').length ?? a.unitCount ?? 0;
             return (
               <div
                 key={a.id}
@@ -227,14 +228,17 @@ export function HexDetailPanel() {
                   marginTop: 6,
                   borderColor: isSelected ? 'var(--accent-gold)' : undefined,
                   borderWidth: isSelected ? 2 : undefined,
-                  cursor: isOwnArmy ? 'pointer' : 'default',
+                  cursor: 'pointer',
                 }}
-                onClick={() => isOwnArmy && setSelectedArmyId(isSelected ? null : a.id)}
+                onClick={() => {
+                  if (isOwnArmy) setSelectedArmyId(isSelected ? null : a.id);
+                  useStore.getState().setDetailPanelArmyId(a.id);
+                }}
               >
                 <div className="settlement-header">
                   <strong>{a.name}</strong>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    {isSelected ? 'Selected' : (armyOwner as any)?.countryName}
+                  <span style={{ fontSize: 11, color: 'var(--accent-gold)', cursor: 'pointer' }}>
+                    Examine
                   </span>
                 </div>
                 {a.subtitle && (
@@ -242,32 +246,11 @@ export function HexDetailPanel() {
                     {a.subtitle}
                   </div>
                 )}
-                {isOwnArmy && a.units ? (
-                  <div className="settlement-stats">
-                    <span>{a.units.filter((u: any) => u.state !== 'destroyed').length} units</span>
-                    <span>Supply: {a.supplyBank}</span>
-                  </div>
-                ) : a.unitCount != null ? (
-                  <div className="settlement-stats">
-                    <span>~{a.unitCount} units</span>
-                  </div>
-                ) : null}
-                {/* Quick orders for own selected army */}
-                {isOwnArmy && isSelected && (
-                  <div style={{ marginTop: 6 }}>
-                    <button
-                      className="btn btn-primary"
-                      style={{ padding: '3px 10px', fontSize: 12 }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsSelectingMoveTarget(true);
-                        setDetailPanelHex(null);
-                      }}
-                    >
-                      Issue Move Order
-                    </button>
-                  </div>
-                )}
+                <div className="settlement-stats">
+                  <span>{unitCount} units</span>
+                  {isOwnArmy && <span>Supply: {a.supplyBank}</span>}
+                  {!isOwnArmy && armyOwner && <span>{(armyOwner as any).countryName}</span>}
+                </div>
               </div>
             );
           })}

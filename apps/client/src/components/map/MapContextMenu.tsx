@@ -3,7 +3,7 @@ import { useStore } from '../../store/index.js';
 
 /**
  * Context menu that appears on right-clicking the hex map.
- * Shows contextual options: Details, Orders → Move, Siege, etc.
+ * Shows hex examine, army examine, and contextual orders.
  */
 export function MapContextMenu() {
   const menu = useStore(s => s.mapContextMenu);
@@ -15,6 +15,7 @@ export function MapContextMenu() {
   const selectedArmyId = useStore(s => s.selectedArmyId);
   const setSelectedArmyId = useStore(s => s.setSelectedArmyId);
   const setDetailPanelHex = useStore(s => s.setDetailPanelHex);
+  const setDetailPanelArmyId = useStore(s => s.setDetailPanelArmyId);
   const setIsSelectingMoveTarget = useStore(s => s.setIsSelectingMoveTarget);
   const setSelectedHex = useStore(s => s.setSelectedHex);
   const addSiegeAssault = useStore(s => s.addSiegeAssault);
@@ -43,9 +44,10 @@ export function MapContextMenu() {
   const hex = hexes.find((h: any) => h.q === menu.hex.q && h.r === menu.hex.r) as any;
   const playerId = player?.id as string | undefined;
 
-  // Armies on this hex belonging to the player
+  // All armies on this hex (own + foreign visible ones)
+  const armiesHere = armies.filter((a: any) => a.hexQ === menu.hex.q && a.hexR === menu.hex.r);
   const myArmiesHere = playerId
-    ? armies.filter((a: any) => a.ownerId === playerId && a.hexQ === menu.hex.q && a.hexR === menu.hex.r)
+    ? armiesHere.filter((a: any) => a.ownerId === playerId)
     : [];
 
   // Currently selected army (may not be on this hex)
@@ -54,8 +56,9 @@ export function MapContextMenu() {
     : null;
   const hasSelectedArmy = selectedArmy && selectedArmy.ownerId === playerId;
 
-  const isOwnHex = hex?.ownerId === playerId;
-  const hexLabel = hex?.customName || `Hex (${menu.hex.q}, ${menu.hex.r})`;
+  const hexLabel = hex?.customName
+    ? `${hex.customName} (${menu.hex.q}, ${menu.hex.r})`
+    : `Hex (${menu.hex.q}, ${menu.hex.r})`;
 
   // Position menu on screen
   const style: React.CSSProperties = {
@@ -65,47 +68,52 @@ export function MapContextMenu() {
 
   return (
     <div className="map-context-menu" ref={ref} style={style}>
-      <div className="map-context-header">{hexLabel}</div>
-
-      {/* Details */}
+      {/* ── Hex row ── */}
       <button
-        className="map-context-item"
+        className="map-context-item map-context-item-examine"
         onClick={() => {
           setDetailPanelHex(menu.hex);
           setSelectedHex(menu.hex);
           close(null);
         }}
       >
-        Details
+        <span className="map-context-item-label">{hexLabel}</span>
+        <span className="map-context-examine-tag">Examine</span>
       </button>
 
-      {/* Select armies on this hex */}
-      {myArmiesHere.length > 0 && (
+      {/* ── Armies on this hex ── */}
+      {armiesHere.length > 0 && (
         <>
           <div className="map-context-divider" />
-          <div className="map-context-label">Select Army</div>
-          {myArmiesHere.map((a: any) => (
-            <button
-              key={a.id}
-              className={`map-context-item ${selectedArmyId === a.id ? 'map-context-item-active' : ''}`}
-              onClick={() => {
-                setSelectedArmyId(a.id);
-                setSelectedHex(menu.hex);
-                close(null);
-              }}
-            >
-              {a.name}
-              <span className="map-context-item-detail">
-                {a.units?.filter((u: any) => u.state !== 'destroyed').length ?? a.unitCount ?? 0} units
-              </span>
-            </button>
-          ))}
+          {armiesHere.map((a: any) => {
+            const isOwn = a.ownerId === playerId;
+            const unitCount = a.units?.filter((u: any) => u.state !== 'destroyed').length ?? a.unitCount ?? 0;
+            return (
+              <button
+                key={a.id}
+                className={`map-context-item map-context-item-examine ${selectedArmyId === a.id ? 'map-context-item-active' : ''}`}
+                onClick={() => {
+                  if (isOwn) {
+                    setSelectedArmyId(a.id);
+                    setSelectedHex(menu.hex);
+                  }
+                  setDetailPanelArmyId(a.id);
+                  close(null);
+                }}
+              >
+                <span className="map-context-item-label">
+                  {a.name}
+                  <span className="map-context-item-detail">{unitCount} units</span>
+                </span>
+                <span className="map-context-examine-tag">Examine</span>
+              </button>
+            );
+          })}
         </>
       )}
 
-      {/* Orders submenu — only if an army is selected */}
+      {/* ── Orders — only if an army is selected ── */}
       {hasSelectedArmy && (() => {
-        // Check if there's an enemy settlement on this hex that the selected army is on
         const armyOnThisHex = selectedArmy.hexQ === menu.hex.q && selectedArmy.hexR === menu.hex.r;
         const enemySettlement = settlements.find((s: any) =>
           s.hexQ === menu.hex.q && s.hexR === menu.hex.r && s.ownerId !== playerId

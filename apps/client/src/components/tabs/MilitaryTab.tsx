@@ -1614,7 +1614,7 @@ function OrbatTab({ armies, templates, weaponDesigns }: {
       {/* Nation root node */}
       <div className="orbat-nation-node">
         <div className="orbat-node-box orbat-node-nation">
-          <div className="orbat-node-name">{(player as any)?.nationName ?? 'Your Realm'}</div>
+          <div className="orbat-node-name">Armed Forces</div>
           <div className="orbat-node-meta">{armies.length} armies · {nationTotalUnits} units · {nationTotalMen.toLocaleString()} men</div>
         </div>
       </div>

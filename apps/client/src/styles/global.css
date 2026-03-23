@@ -2975,6 +2975,304 @@ h3, h4, h5, h6 {
   margin: 2px 0;
 }
 
+/* ─── Context Menu: Examine layout ─── */
+
+.map-context-item-examine {
+  gap: 8px;
+}
+
+.map-context-item-examine .map-context-item-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.map-context-examine-tag {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent-gold);
+  padding: 2px 6px;
+  border: 1px solid var(--accent-gold);
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.map-context-item-examine:hover .map-context-examine-tag {
+  background: var(--accent-gold);
+  color: var(--bg-parchment-dark);
+}
+
+/* ─── Army Detail Panel ─── */
+
+.army-examine-summary {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: var(--bg-inset);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.army-examine-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.army-examine-stat-value {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.army-examine-stat-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.army-examine-general {
+  font-size: 13px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  background: var(--bg-inset);
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
+.army-examine-unit {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-bottom: 6px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.army-examine-unit-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.army-examine-unit-header:hover {
+  background: rgba(74, 61, 42, 0.05);
+}
+
+.army-examine-unit-symbol {
+  font-size: 18px;
+  font-weight: 700;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.army-examine-unit-identity {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.army-examine-unit-name {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.army-examine-unit-type {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.army-examine-unit-strength {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.army-examine-unit-bar {
+  width: 48px;
+  height: 5px;
+  background: var(--bg-inset);
+  border-radius: 3px;
+  overflow: hidden;
+  cursor: help;
+}
+
+.army-examine-unit-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.army-examine-unit-chevron {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+}
+
+.army-examine-unit-detail {
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border-color);
+  background: rgba(72, 62, 50, 0.3);
+}
+
+.army-examine-tiers {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 8px;
+}
+
+.army-examine-tier-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.army-examine-tier-label {
+  width: 48px;
+  font-weight: 600;
+}
+
+.army-examine-tier-track {
+  flex: 1;
+  height: 5px;
+  background: var(--bg-inset);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.army-examine-tier-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.army-examine-tier-count {
+  width: 28px;
+  text-align: right;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.army-examine-equip-section {
+  margin-bottom: 8px;
+}
+
+.army-examine-equip-header {
+  display: grid;
+  grid-template-columns: 18px 1fr 36px 36px;
+  gap: 4px;
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.army-examine-equip-col {
+  text-align: right;
+}
+
+.army-examine-equip-row {
+  display: grid;
+  grid-template-columns: 18px 1fr 36px 36px;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 0;
+  font-size: 11px;
+}
+
+.army-examine-equip-row:not(:last-child) {
+  border-bottom: 1px dotted var(--border-color);
+}
+
+.army-examine-equip-icon {
+  font-size: 12px;
+  text-align: center;
+}
+
+.army-examine-equip-name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.army-examine-equip-count {
+  text-align: right;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.army-examine-equip-shortage {
+  color: var(--accent-red);
+  font-weight: 600;
+}
+
+.army-examine-stats {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  background: var(--bg-inset);
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
+.army-examine-stat-cell {
+  text-align: center;
+  min-width: 28px;
+}
+
+.army-examine-stat-cell-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.army-examine-stat-cell-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.army-examine-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* ─── Move Target Banner ─── */
 
 .move-target-banner {

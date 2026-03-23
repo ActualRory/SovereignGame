@@ -1,6 +1,6 @@
 import { eq, and, or } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
-import type { LetterAttachment, AttachmentType, TradeAttachmentDetails, AllianceAttachmentDetails, AllianceTier, RelationType } from '@kingdoms/shared';
+import type { LetterAttachment, AttachmentType, TradeAttachmentDetails, AllianceAttachmentDetails, LoanAttachmentDetails, AllianceTier, RelationType } from '@kingdoms/shared';
 
 /**
  * Process the game effect of a single letter attachment.
@@ -137,10 +137,53 @@ export async function processAttachmentEffect(
       break;
     }
 
+    case 'loan': {
+      const d = (details ?? {}) as LoanAttachmentDetails;
+      const principal = d.principal ?? 0;
+      const interestRate = d.interestRate ?? 0;
+      const duration = d.durationMajorTurns ?? 1;
+      const grace = d.gracePeriodMajorTurns ?? 0;
+      const totalOwed = Math.round(principal * (1 + interestRate / 100));
+      const instalmentAmount = Math.ceil(totalOwed / duration);
+
+      if (principal <= 0 || duration <= 0) break;
+
+      // Transfer gold: lender → borrower
+      const [lender] = await db.select().from(schema.players).where(eq(schema.players.id, senderId));
+      if (lender) {
+        await db.update(schema.players)
+          .set({ gold: lender.gold - principal })
+          .where(eq(schema.players.id, senderId));
+      }
+      const [borrower] = await db.select().from(schema.players).where(eq(schema.players.id, recipientId));
+      if (borrower) {
+        await db.update(schema.players)
+          .set({ gold: borrower.gold + principal })
+          .where(eq(schema.players.id, recipientId));
+      }
+
+      // Create loan record
+      await db.insert(schema.loans).values({
+        gameId,
+        lenderId: senderId,
+        borrowerId: recipientId,
+        principal,
+        interestRate,
+        totalOwed,
+        amountPaid: 0,
+        instalmentAmount,
+        startTurn: currentTurn,
+        durationMajorTurns: duration,
+        gracePeriodMajorTurns: grace,
+        delinquentCount: 0,
+        status: 'active',
+      });
+      break;
+    }
+
     case 'share_intelligence':
     case 'tribute_demand':
     case 'offer_subsidy':
-    case 'loan':
     case 'land_cession':
       break;
   }

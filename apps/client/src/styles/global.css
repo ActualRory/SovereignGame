@@ -2049,6 +2049,16 @@ h3, h4, h5, h6 {
   font-style: italic;
 }
 
+.attachment-loan-summary {
+  font-size: 11px;
+  color: #6b7b55;
+  font-style: italic;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(107, 123, 85, 0.08);
+  border-radius: 4px;
+}
+
 /* Accept/Reject bar */
 .letter-response-bar {
   display: flex;

@@ -372,6 +372,11 @@ function WritingDesk({ slug, myId, players, otherPlayers, letters, relations }: 
                               {formatTradeDetails(att.details)}
                             </span>
                           )}
+                          {att.type === 'loan' && att.details && (
+                            <span className="attachment-trade-summary">
+                              {formatLoanDetails(att.details)}
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -534,6 +539,46 @@ function AttachmentDetailEditor({ attachment, onChange, players }: {
       );
     }
 
+    case 'loan': {
+      const principal = details.principal ?? 0;
+      const interestRate = details.interestRate ?? 10;
+      const duration = details.durationMajorTurns ?? 1;
+      const grace = details.gracePeriodMajorTurns ?? 0;
+      const totalOwed = Math.round(principal * (1 + interestRate / 100));
+      const instalment = duration > 0 ? Math.ceil(totalOwed / duration) : 0;
+
+      return (
+        <div className="attachment-detail-form">
+          <div className="attachment-detail-row">
+            <span className="attachment-detail-label">Principal (gold):</span>
+            <input type="number" min={1} className="attachment-input-num" value={principal || ''} placeholder="500"
+              onChange={e => onChange({ ...details, principal: parseInt(e.target.value) || 0, interestRate, durationMajorTurns: duration, gracePeriodMajorTurns: grace })} />
+          </div>
+          <div className="attachment-detail-row">
+            <span className="attachment-detail-label">Interest rate (%):</span>
+            <input type="number" min={0} max={200} className="attachment-input-num" value={interestRate} placeholder="10"
+              onChange={e => onChange({ ...details, principal, interestRate: parseInt(e.target.value) || 0, durationMajorTurns: duration, gracePeriodMajorTurns: grace })} />
+          </div>
+          <div className="attachment-detail-row">
+            <span className="attachment-detail-label">Repayment (years):</span>
+            <input type="number" min={1} max={20} className="attachment-input-num" value={duration} placeholder="3"
+              onChange={e => onChange({ ...details, principal, interestRate, durationMajorTurns: parseInt(e.target.value) || 1, gracePeriodMajorTurns: grace })} />
+          </div>
+          <div className="attachment-detail-row">
+            <span className="attachment-detail-label">Grace period (years):</span>
+            <input type="number" min={0} max={10} className="attachment-input-num" value={grace} placeholder="0"
+              onChange={e => onChange({ ...details, principal, interestRate, durationMajorTurns: duration, gracePeriodMajorTurns: parseInt(e.target.value) || 0 })} />
+          </div>
+          {principal > 0 && (
+            <div className="attachment-loan-summary">
+              Total owed: {totalOwed}g &middot; {instalment}g/year for {duration} year{duration !== 1 ? 's' : ''}
+              {grace > 0 ? ` (after ${grace} year grace period)` : ''}
+            </div>
+          )}
+        </div>
+      );
+    }
+
     default:
       return null;
   }
@@ -560,4 +605,16 @@ function formatTradeDetails(d: any): string {
   if (offered.length > 0) parts.push(offered.map((r: any) => `${r.amount} ${r.resource}`).join(', '));
   if (requested.length > 0) parts.push('for ' + requested.map((r: any) => `${r.amount} ${r.resource}`).join(', '));
   return parts.length > 0 ? ` (${parts.join(' ')})` : '';
+}
+
+function formatLoanDetails(d: any): string {
+  const principal = d.principal ?? 0;
+  const rate = d.interestRate ?? 0;
+  const duration = d.durationMajorTurns ?? 1;
+  const grace = d.gracePeriodMajorTurns ?? 0;
+  const total = Math.round(principal * (1 + rate / 100));
+  const instalment = duration > 0 ? Math.ceil(total / duration) : 0;
+  let s = ` (${principal}g at ${rate}%, ${instalment}g/yr for ${duration}yr)`;
+  if (grace > 0) s = s.slice(0, -1) + `, ${grace}yr grace)`;
+  return s;
 }

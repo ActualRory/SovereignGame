@@ -23,6 +23,7 @@ export const equipmentOrderStatusEnum = pgEnum('equipment_order_status', ['activ
 export const equipmentOrderPriorityEnum = pgEnum('equipment_order_priority', ['relaxed', 'standard', 'rush']);
 export const officerRankEnum = pgEnum('officer_rank', ['major', 'colonel', 'general']);
 export const letterResponseEnum = pgEnum('letter_response', ['accepted', 'rejected']);
+export const loanStatusEnum = pgEnum('loan_status', ['active', 'delinquent', 'defaulted', 'repaid', 'forgiven']);
 
 // ─── Tables ───
 
@@ -300,6 +301,25 @@ export const tradeAgreements = pgTable('trade_agreements', {
   isStanding: boolean('is_standing').notNull().default(false),
   startedTurn: integer('started_turn').notNull().default(0),
 });
+
+export const loans = pgTable('loans', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  gameId: uuid('game_id').notNull().references(() => games.id),
+  lenderId: uuid('lender_id').notNull().references(() => players.id),
+  borrowerId: uuid('borrower_id').notNull().references(() => players.id),
+  principal: integer('principal').notNull(),
+  interestRate: integer('interest_rate').notNull(),
+  totalOwed: integer('total_owed').notNull(),
+  amountPaid: integer('amount_paid').notNull().default(0),
+  instalmentAmount: integer('instalment_amount').notNull(),
+  startTurn: integer('start_turn').notNull(),
+  durationMajorTurns: integer('duration_major_turns').notNull(),
+  gracePeriodMajorTurns: integer('grace_period_major_turns').notNull().default(0),
+  delinquentCount: integer('delinquent_count').notNull().default(0),
+  status: loanStatusEnum('status').notNull().default('active'),
+}, (table) => [
+  index('loans_game_idx').on(table.gameId),
+]);
 
 export const turnOrders = pgTable('turn_orders', {
   id: uuid('id').primaryKey().defaultRandom(),

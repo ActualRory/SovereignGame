@@ -35,6 +35,37 @@ export interface AllianceAttachmentDetails {
   terms?: Partial<AllianceTerms>;
 }
 
+export interface LoanAttachmentDetails {
+  /** Gold amount lent (transferred immediately on acceptance). */
+  principal: number;
+  /** Interest rate as a percentage of principal (e.g. 20 = 20%). */
+  interestRate: number;
+  /** Number of major turns (years) over which to repay. */
+  durationMajorTurns: number;
+  /** Major turns before payments begin (interest still accrues). Default 0. */
+  gracePeriodMajorTurns?: number;
+}
+
+export type LoanStatus = 'active' | 'delinquent' | 'defaulted' | 'repaid' | 'forgiven';
+
+export interface Loan {
+  id: string;
+  gameId: string;
+  lenderId: string;
+  borrowerId: string;
+  principal: number;
+  interestRate: number;
+  totalOwed: number;
+  amountPaid: number;
+  instalmentAmount: number;
+  startTurn: number;
+  durationMajorTurns: number;
+  gracePeriodMajorTurns: number;
+  /** Consecutive missed/partial payments. 2 = default. */
+  delinquentCount: number;
+  status: LoanStatus;
+}
+
 /** Map from attachment type → whether it requires recipient acceptance. */
 export const UNILATERAL_ATTACHMENTS: readonly AttachmentType[] = [
   'declaration_of_war', 'close_trade',
@@ -54,7 +85,7 @@ export type LetterResponse = 'accepted' | 'rejected' | null;
 
 export interface LetterAttachment {
   type: AttachmentType;
-  details?: TradeAttachmentDetails | AllianceAttachmentDetails | Record<string, unknown>;
+  details?: TradeAttachmentDetails | AllianceAttachmentDetails | LoanAttachmentDetails | Record<string, unknown>;
 }
 
 export interface Letter {

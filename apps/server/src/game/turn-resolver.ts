@@ -254,6 +254,88 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   }
 
   // ══════════════════════════════════════════════
+  // STEP 3b: Loan Payments (on major turn ends)
+  // ══════════════════════════════════════════════
+  if (isMajorEnd) {
+    const activeLoans = await db.select().from(schema.loans)
+      .where(and(
+        eq(schema.loans.gameId, gameId),
+        inArray(schema.loans.status, ['active', 'delinquent']),
+      ));
+
+    for (const loan of activeLoans) {
+      // Check grace period: each major turn = 8 minor turns
+      const majorTurnsSinceStart = Math.floor((turnNumber - loan.startTurn) / 8);
+      if (majorTurnsSinceStart < loan.gracePeriodMajorTurns) continue;
+
+      const remaining = loan.totalOwed - loan.amountPaid;
+      if (remaining <= 0) {
+        await db.update(schema.loans)
+          .set({ status: 'repaid', delinquentCount: 0 })
+          .where(eq(schema.loans.id, loan.id));
+        events.push({ type: 'loan_repaid', description: `Loan of ${loan.principal}g fully repaid.`, playerIds: [loan.borrowerId, loan.lenderId] });
+        continue;
+      }
+
+      const payment = Math.min(loan.instalmentAmount, remaining);
+
+      // Get borrower's current gold
+      const [borrower] = await db.select().from(schema.players).where(eq(schema.players.id, loan.borrowerId));
+      if (!borrower) continue;
+
+      const canPay = borrower.gold >= payment;
+      const actualPayment = canPay ? payment : Math.max(0, borrower.gold);
+
+      // Transfer whatever they can pay
+      if (actualPayment > 0) {
+        await db.update(schema.players)
+          .set({ gold: borrower.gold - actualPayment })
+          .where(eq(schema.players.id, loan.borrowerId));
+
+        const [lender] = await db.select().from(schema.players).where(eq(schema.players.id, loan.lenderId));
+        if (lender) {
+          await db.update(schema.players)
+            .set({ gold: lender.gold + actualPayment })
+            .where(eq(schema.players.id, loan.lenderId));
+        }
+      }
+
+      const newAmountPaid = loan.amountPaid + actualPayment;
+      const newDelinquent = canPay ? 0 : loan.delinquentCount + 1;
+
+      // Check if fully repaid after this payment
+      if (newAmountPaid >= loan.totalOwed) {
+        await db.update(schema.loans)
+          .set({ amountPaid: newAmountPaid, status: 'repaid', delinquentCount: 0 })
+          .where(eq(schema.loans.id, loan.id));
+        events.push({ type: 'loan_repaid', description: `Loan of ${loan.principal}g fully repaid.`, playerIds: [loan.borrowerId, loan.lenderId] });
+      } else if (newDelinquent >= 2) {
+        // Default after 2 consecutive missed payments
+        await db.update(schema.loans)
+          .set({ amountPaid: newAmountPaid, status: 'defaulted', delinquentCount: newDelinquent })
+          .where(eq(schema.loans.id, loan.id));
+
+        // Stability penalty for borrower
+        const newStability = Math.round(Math.max(0, borrower.stability + STABILITY_PER_TURN.gold_deficit * 5));
+        await db.update(schema.players)
+          .set({ stability: newStability })
+          .where(eq(schema.players.id, loan.borrowerId));
+
+        events.push({ type: 'loan_defaulted', description: `Defaulted on loan of ${loan.principal}g! Stability plummets.`, playerIds: [loan.borrowerId, loan.lenderId] });
+      } else {
+        const newStatus = canPay ? 'active' : 'delinquent';
+        await db.update(schema.loans)
+          .set({ amountPaid: newAmountPaid, status: newStatus, delinquentCount: newDelinquent })
+          .where(eq(schema.loans.id, loan.id));
+
+        if (!canPay) {
+          events.push({ type: 'loan_delinquent', description: `Missed loan payment — ${remaining - actualPayment}g still owed.`, playerIds: [loan.borrowerId, loan.lenderId] });
+        }
+      }
+    }
+  }
+
+  // ══════════════════════════════════════════════
   // STEP 4: Construction Progress
   // ══════════════════════════════════════════════
   for (const player of activePlayers) {

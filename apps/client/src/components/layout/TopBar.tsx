@@ -33,6 +33,7 @@ export function TopBar() {
   const resetOrders = useStore(s => s.resetOrders);
 
   const [submitting, setSubmitting] = useState(false);
+  const [retracting, setRetracting] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [showSubmitTooltip, setShowSubmitTooltip] = useState(false);
 
@@ -116,6 +117,38 @@ export function TopBar() {
       console.error('Failed to submit turn:', err);
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  const allSubmitted = submittedPlayers.length === activePlayers.length;
+
+  async function retractTurn() {
+    if (!slug || !hasSubmitted || allSubmitted) return;
+    setRetracting(true);
+
+    const sessionToken = localStorage.getItem(`session:${slug}`);
+    if (!sessionToken) return;
+
+    try {
+      const res = await fetch(`/api/games/${slug}/orders`, {
+        method: 'DELETE',
+        headers: { 'x-session-token': sessionToken },
+      });
+
+      if (res.ok) {
+        const state = useStore.getState();
+        const updatedPlayers = state.players.map((p: any) =>
+          p.id === myId ? { ...p, hasSubmitted: false } : p
+        );
+        state.setGameState({
+          player: { ...player, hasSubmitted: false } as any,
+          players: updatedPlayers,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to retract turn:', err);
+    } finally {
+      setRetracting(false);
     }
   }
 
@@ -234,13 +267,23 @@ export function TopBar() {
                 )}
               </div>
 
-              <button
-                className={`btn ${hasSubmitted ? 'btn-submitted' : 'btn-submit'}`}
-                onClick={submitTurn}
-                disabled={hasSubmitted || submitting}
-              >
-                {hasSubmitted ? 'Turn Ended' : submitting ? 'Submitting...' : 'End Turn'}
-              </button>
+              {hasSubmitted && !allSubmitted ? (
+                <button
+                  className="btn btn-secondary"
+                  onClick={retractTurn}
+                  disabled={retracting}
+                >
+                  {retracting ? 'Retracting...' : 'Un-end Turn'}
+                </button>
+              ) : (
+                <button
+                  className={`btn ${hasSubmitted ? 'btn-submitted' : 'btn-submit'}`}
+                  onClick={submitTurn}
+                  disabled={hasSubmitted || submitting}
+                >
+                  {hasSubmitted ? 'Turn Ended' : submitting ? 'Submitting...' : 'End Turn'}
+                </button>
+              )}
             </>
           )
         )}

@@ -13,6 +13,10 @@ export function setSocketServer(socketServer: SocketServer) {
   io = socketServer;
 }
 
+export function getIO(): SocketServer | null {
+  return io;
+}
+
 /**
  * Begin a new turn for a game. Sets up deadline timers and resets submit flags.
  */

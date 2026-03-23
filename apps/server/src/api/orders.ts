@@ -82,6 +82,63 @@ ordersRouter.post('/:slug/orders', async (req, res) => {
   res.json({ success: true });
 });
 
+/** DELETE /api/games/:slug/orders — Retract turn submission (un-end turn). */
+ordersRouter.delete('/:slug/orders', async (req, res) => {
+  const { slug } = req.params;
+  const sessionToken = req.headers['x-session-token'] as string;
+
+  if (!sessionToken) {
+    res.status(401).json({ error: 'Session token required' });
+    return;
+  }
+
+  const [game] = await db.select()
+    .from(schema.games)
+    .where(eq(schema.games.slug, slug));
+
+  if (!game || game.status !== 'active') {
+    res.status(400).json({ error: 'Game not active' });
+    return;
+  }
+
+  const [player] = await db.select()
+    .from(schema.players)
+    .where(eq(schema.players.sessionToken, sessionToken));
+
+  if (!player || player.gameId !== game.id) {
+    res.status(403).json({ error: 'Not in this game' });
+    return;
+  }
+
+  if (!player.hasSubmitted) {
+    res.status(400).json({ error: 'Not submitted yet' });
+    return;
+  }
+
+  // Check that not all players have submitted (turn would already be resolving)
+  const allPlayers = await db.select().from(schema.players)
+    .where(eq(schema.players.gameId, game.id));
+  const activePlayers = allPlayers.filter(p => !p.isEliminated && !p.isSpectator);
+  const allSubmitted = activePlayers.every(p => p.hasSubmitted);
+
+  if (allSubmitted) {
+    res.status(400).json({ error: 'All players have submitted — turn is resolving' });
+    return;
+  }
+
+  // Retract submission
+  await db.update(schema.players)
+    .set({ hasSubmitted: false })
+    .where(eq(schema.players.id, player.id));
+
+  // Notify other players
+  const { getIO } = await import('../game/turn-manager.js');
+  const io = getIO();
+  io?.to(`game:${game.id}`).emit('player_unsubmitted', { playerId: player.id });
+
+  res.json({ success: true });
+});
+
 /** GET /api/games/:slug/orders — Get current player's saved orders for this turn. */
 ordersRouter.get('/:slug/orders', async (req, res) => {
   const { slug } = req.params;

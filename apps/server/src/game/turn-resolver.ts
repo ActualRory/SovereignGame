@@ -1308,9 +1308,24 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       if (!playerRow) continue;
 
       if (nobleOrder.type === 'hire_noble') {
-        const [settlement] = await db.select().from(schema.settlements)
-          .where(eq(schema.settlements.id, nobleOrder.settlementId));
-        if (!settlement || settlement.ownerId !== player.id) continue;
+        // Find a valid settlement: either the specified one, or auto-pick one with a military academy
+        let settlement: any = null;
+        if (nobleOrder.settlementId) {
+          const [s] = await db.select().from(schema.settlements)
+            .where(eq(schema.settlements.id, nobleOrder.settlementId));
+          if (s && s.ownerId === player.id) settlement = s;
+        }
+        if (!settlement) {
+          // Auto-pick: find any player settlement with a military academy
+          const playerSettlements = await db.select().from(schema.settlements)
+            .where(eq(schema.settlements.ownerId, player.id));
+          for (const s of playerSettlements) {
+            const blds = await db.select().from(schema.buildings)
+              .where(and(eq(schema.buildings.settlementId, s.id), eq(schema.buildings.isConstructing, false)));
+            if (blds.some(b => b.type === 'military_academy')) { settlement = s; break; }
+          }
+        }
+        if (!settlement) continue;
 
         // Requires military_academy building at settlement
         const settlementBuildings = await db.select().from(schema.buildings)

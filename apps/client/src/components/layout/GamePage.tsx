@@ -105,6 +105,18 @@ export function GamePage() {
       state.setGameState({ players: updatedPlayers, player: updatedPlayer });
     });
 
+    socket.on('player_unsubmitted', ({ playerId }: { playerId: string }) => {
+      const state = useStore.getState();
+      const updatedPlayers = state.players.map((p: any) =>
+        p.id === playerId ? { ...p, hasSubmitted: false } : p
+      );
+      const currentPlayer = state.player as Record<string, unknown> | null;
+      const updatedPlayer = currentPlayer?.id === playerId
+        ? { ...currentPlayer, hasSubmitted: false }
+        : currentPlayer;
+      state.setGameState({ players: updatedPlayers, player: updatedPlayer });
+    });
+
     socket.on('game_over', ({ winnerId }: { winnerId: string }) => {
       fetchState();
       addNotification({
@@ -121,6 +133,7 @@ export function GamePage() {
       socket.off('turn_resolved');
       socket.off('turn_started');
       socket.off('player_submitted');
+      socket.off('player_unsubmitted');
       socket.off('game_over');
     };
   }, [slug, gameId, fetchState, addNotification]);

@@ -11,6 +11,7 @@ export function TurnBar() {
   const pendingOrders = useStore(s => s.pendingOrders);
   const resetOrders = useStore(s => s.resetOrders);
   const [submitting, setSubmitting] = useState(false);
+  const [retracting, setRetracting] = useState(false);
 
   if (!game || !player || game.status !== 'active') return null;
 
@@ -98,6 +99,38 @@ export function TurnBar() {
     }
   }
 
+  const allSubmitted = submittedCount === activePlayers.length;
+
+  async function retractTurn() {
+    if (!slug || !hasSubmitted || allSubmitted) return;
+    setRetracting(true);
+
+    const sessionToken = localStorage.getItem(`session:${slug}`);
+    if (!sessionToken) return;
+
+    try {
+      const res = await fetch(`/api/games/${slug}/orders`, {
+        method: 'DELETE',
+        headers: { 'x-session-token': sessionToken },
+      });
+
+      if (res.ok) {
+        const state = useStore.getState();
+        const updatedPlayers = state.players.map((p: any) =>
+          p.id === (player as any).id ? { ...p, hasSubmitted: false } : p
+        );
+        state.setGameState({
+          player: { ...player, hasSubmitted: false } as any,
+          players: updatedPlayers,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to retract turn:', err);
+    } finally {
+      setRetracting(false);
+    }
+  }
+
   return (
     <div className="turn-bar">
       <div className="turn-info">
@@ -105,13 +138,23 @@ export function TurnBar() {
         <br />
         <span>{submittedCount}/{activePlayers.length} submitted</span>
       </div>
-      <button
-        className="btn btn-submit"
-        onClick={submitTurn}
-        disabled={hasSubmitted || submitting}
-      >
-        {hasSubmitted ? 'Submitted' : submitting ? 'Submitting...' : 'End Turn'}
-      </button>
+      {hasSubmitted && !allSubmitted ? (
+        <button
+          className="btn btn-secondary"
+          onClick={retractTurn}
+          disabled={retracting}
+        >
+          {retracting ? 'Retracting...' : 'Un-end Turn'}
+        </button>
+      ) : (
+        <button
+          className="btn btn-submit"
+          onClick={submitTurn}
+          disabled={hasSubmitted || submitting}
+        >
+          {hasSubmitted ? 'Submitted' : submitting ? 'Submitting...' : 'End Turn'}
+        </button>
+      )}
     </div>
   );
 }

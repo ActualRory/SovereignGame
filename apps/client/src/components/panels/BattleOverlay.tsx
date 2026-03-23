@@ -160,7 +160,12 @@ export function BattleOverlay() {
                   <em>Fire phase:</em>
                   {round.firePhase.map((r: any, i: number) => (
                     <span key={i} className="battle-roll">
-                      {r.unitName ?? 'Unit'}: {r.dice?.length}d20 → {r.successes} hits ({r.netHits} net)
+                      {r.unitName ?? 'Unit'}: {r.dice?.length}d20 → {r.netHits} hits
+                      {r.targets?.length > 1 && (
+                        <span className="battle-roll-targets">
+                          {' '}({r.targets.map((t: any) => `${t.hits} vs ${t.targetUnitName ?? 'unit'} @${t.threshold}+`).join(', ')})
+                        </span>
+                      )}
                     </span>
                   ))}
                 </div>
@@ -170,7 +175,12 @@ export function BattleOverlay() {
                   <em>Shock phase:</em>
                   {round.shockPhase.map((r: any, i: number) => (
                     <span key={i} className="battle-roll">
-                      {r.unitName ?? 'Unit'}: {r.dice?.length}d20 → {r.successes} hits ({r.netHits} net)
+                      {r.unitName ?? 'Unit'}: {r.dice?.length}d20 → {r.netHits} hits
+                      {r.targets?.length > 1 && (
+                        <span className="battle-roll-targets">
+                          {' '}({r.targets.map((t: any) => `${t.hits} vs ${t.targetUnitName ?? 'unit'} @${t.threshold}+`).join(', ')})
+                        </span>
+                      )}
                     </span>
                   ))}
                 </div>

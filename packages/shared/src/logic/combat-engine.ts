@@ -10,7 +10,7 @@
 import type { UnitState, UnitPosition, ShipType, ShipState } from '../types/military.js';
 import type { TerrainType } from '../types/map.js';
 import type {
-  CombatResult, CombatRound, DiceRoll,
+  CombatResult, CombatRound, DiceRoll, DiceRollTarget,
   CombatCasualty, MoraleCheck, UnitLossSummary,
   NavalCombatResult, NavalCombatRound, NavalCasualty, NavalLossSummary,
 } from '../types/combat.js';
@@ -21,7 +21,7 @@ import {
   DICE_SIDES, MAX_COMBAT_ROUNDS,
   COMMAND_BONUS_PER_POINT, COMMAND_WIDTH_PER_2_POINTS,
   MANEUVER_WARFARE_WIDTH_BONUS, MODERN_DOCTRINE_BONUS,
-  DICE_MULTIPLIER,
+  DICE_MULTIPLIER, ARMOUR_HITSON_DIVISOR,
 } from '../constants/combat.js';
 
 // ── Seeded PRNG (mulberry32) ──
@@ -152,21 +152,21 @@ export function resolveCombat(input: CombatInput): CombatResult {
     const atkFireUnits = [...atkBack, ...atkFlank, ...atkFront];
     const defFireUnits = [...defBack, ...defFlank, ...defFront];
 
-    const atkFireDamage = resolvePhase('fire', atkFireUnits, defFront, input.attacker.commandRating, 0, input.attackerHasModernDoctrine ?? false, rng, fireRolls, 'attacker');
-    const defFireDamage = resolvePhase('fire', defFireUnits, atkFront, input.defender.commandRating, defenceBonus, input.defenderHasModernDoctrine ?? false, rng, fireRolls, 'defender');
+    const atkFireHits = resolvePhase('fire', atkFireUnits, defFront, input.attacker.commandRating, 0, input.attackerHasModernDoctrine ?? false, rng, fireRolls, 'attacker');
+    const defFireHits = resolvePhase('fire', defFireUnits, atkFront, input.defender.commandRating, defenceBonus, input.defenderHasModernDoctrine ?? false, rng, fireRolls, 'defender');
 
-    applyDamage(atkFireDamage, activeDefenders, defFront, atkFlanking ? defBack : [], casualties, 'defender');
-    applyDamage(defFireDamage, activeAttackers, atkFront, defFlanking ? atkBack : [], casualties, 'attacker');
+    applyTargetedDamage(atkFireHits, defFront, atkFlanking ? defBack : [], casualties, 'defender');
+    applyTargetedDamage(defFireHits, atkFront, defFlanking ? atkBack : [], casualties, 'attacker');
 
     // ── Shock Phase ──
     const atkShockUnits = [...atkFront, ...atkFlank];
     const defShockUnits = [...defFront, ...defFlank];
 
-    const atkShockDamage = resolvePhase('shock', atkShockUnits, defFront, input.attacker.commandRating, 0, input.attackerHasModernDoctrine ?? false, rng, shockRolls, 'attacker');
-    const defShockDamage = resolvePhase('shock', defShockUnits, atkFront, input.defender.commandRating, defenceBonus, input.defenderHasModernDoctrine ?? false, rng, shockRolls, 'defender');
+    const atkShockHits = resolvePhase('shock', atkShockUnits, defFront, input.attacker.commandRating, 0, input.attackerHasModernDoctrine ?? false, rng, shockRolls, 'attacker');
+    const defShockHits = resolvePhase('shock', defShockUnits, atkFront, input.defender.commandRating, defenceBonus, input.defenderHasModernDoctrine ?? false, rng, shockRolls, 'defender');
 
-    applyDamage(atkShockDamage, activeDefenders, defFront, atkFlanking ? defBack : [], casualties, 'defender');
-    applyDamage(defShockDamage, activeAttackers, atkFront, defFlanking ? atkBack : [], casualties, 'attacker');
+    applyTargetedDamage(atkShockHits, defFront, atkFlanking ? defBack : [], casualties, 'defender');
+    applyTargetedDamage(defShockHits, atkFront, defFlanking ? atkBack : [], casualties, 'attacker');
 
     // ── Morale Checks ──
     for (const cas of casualties) {
@@ -281,16 +281,16 @@ export function resolveSiegeAssault(input: CombatInput): CombatResult {
     const moraleChecks: MoraleCheck[] = [];
 
     const defFireUnits = [...defBack, ...defFront];
-    const defFireDamage = resolvePhase('fire', defFireUnits, atkFront, input.defender.commandRating, defenceBonus, input.defenderHasModernDoctrine ?? false, rng, fireRolls, 'defender');
-    applyDamage(defFireDamage, activeAttackers, atkFront, [], casualties, 'attacker');
+    const defFireHits = resolvePhase('fire', defFireUnits, atkFront, input.defender.commandRating, defenceBonus, input.defenderHasModernDoctrine ?? false, rng, fireRolls, 'defender');
+    applyTargetedDamage(defFireHits, atkFront, [], casualties, 'attacker');
 
     const atkFireUnits = [...atkBack, ...atkFront];
-    const atkFireDamage = resolvePhase('fire', atkFireUnits, defFront, input.attacker.commandRating, 0, input.attackerHasModernDoctrine ?? false, rng, fireRolls, 'attacker');
-    applyDamage(atkFireDamage, activeDefenders, defFront, [], casualties, 'defender');
+    const atkFireHits = resolvePhase('fire', atkFireUnits, defFront, input.attacker.commandRating, 0, input.attackerHasModernDoctrine ?? false, rng, fireRolls, 'attacker');
+    applyTargetedDamage(atkFireHits, defFront, [], casualties, 'defender');
 
     const atkShockUnits = atkFront.filter(u => totalTroops(u.troopCounts) > 0);
-    const atkShockDamage = resolvePhase('shock', atkShockUnits, defFront, input.attacker.commandRating, 0, input.attackerHasModernDoctrine ?? false, rng, shockRolls, 'attacker');
-    applyDamage(atkShockDamage, activeDefenders, defFront, [], casualties, 'defender');
+    const atkShockHits = resolvePhase('shock', atkShockUnits, defFront, input.attacker.commandRating, 0, input.attackerHasModernDoctrine ?? false, rng, shockRolls, 'attacker');
+    applyTargetedDamage(atkShockHits, defFront, [], casualties, 'defender');
 
     for (const cas of casualties) {
       const pool = cas.side === 'attacker' ? attackers : defenders;
@@ -363,6 +363,20 @@ function assignFrontline(units: CombatUnit[], maxWidth: number): CombatUnit[] {
   return front;
 }
 
+/** Convert raw armour/AP stat to hitsOn modifier. */
+function armourToHitsMod(raw: number): number {
+  return Math.ceil(raw / ARMOUR_HITSON_DIVISOR);
+}
+
+/**
+ * Resolve one phase (fire or shock) with per-target armour/AP.
+ *
+ * Each attacker splits its dice across defenders proportionally by troop count.
+ * Each batch is rolled against a per-defender threshold:
+ *   effective threshold = base hitsOn − vet mod + defender armour mod − attacker AP mod
+ *
+ * Returns a map of defender unit ID → total hits aimed at that defender.
+ */
 function resolvePhase(
   phase: 'fire' | 'shock',
   attackingUnits: CombatUnit[],
@@ -373,8 +387,14 @@ function resolvePhase(
   rng: () => number,
   rolls: DiceRoll[],
   side: 'attacker' | 'defender',
-): number {
-  let totalDamage = 0;
+): Map<string, number> {
+  const hitsByDefender = new Map<string, number>();
+
+  const liveDefenders = defenderFrontline.filter(u => totalTroops(u.troopCounts) > 0);
+  if (liveDefenders.length === 0) return hitsByDefender;
+
+  // Total defender troops for proportional dice splitting
+  const totalDefTroops = liveDefenders.reduce((s, u) => s + totalTroops(u.troopCounts), 0);
 
   for (const unit of attackingUnits) {
     if (totalTroops(unit.troopCounts) <= 0 || unit.isBroken) continue;
@@ -383,64 +403,138 @@ function resolvePhase(
     if (baseStat === 0) continue;
 
     const troops = totalTroops(unit.troopCounts);
-    const troopScale = troops / 100; // 100 troops = 1×, 500 troops = 5×
+    const troopScale = troops / 100;
     const stateMultiplier = STATE_DICE_MULTIPLIER[unit.state] ?? 1;
     const numDice = Math.max(1, Math.round(baseStat * troopScale * DICE_MULTIPLIER * stateMultiplier));
 
-    // Weighted veterancy modifier reduces hitsOn threshold
     const vetMod = getWeightedVeterancyModifier(unit.troopCounts.rookie, unit.troopCounts.capable, unit.troopCounts.veteran);
-    const threshold = Math.max(1, unit.hitsOn - vetMod);
+    const baseThreshold = Math.max(1, unit.hitsOn - vetMod);
 
     const bonus = (commandRating * COMMAND_BONUS_PER_POINT)
       + (side === 'defender' ? terrainBonus : 0)
       + (hasModernDoctrine ? MODERN_DOCTRINE_BONUS : 0);
 
+    const attackerApMod = armourToHitsMod(unit.ap);
+
+    // Roll all dice up front (deterministic sequence)
     const dice: number[] = [];
-    let successes = 0;
-    for (let i = 0; i < numDice; i++) {
-      const roll = rollD20(rng);
-      dice.push(roll);
-      if (roll + bonus >= threshold) successes++;
+    for (let i = 0; i < numDice; i++) dice.push(rollD20(rng));
+
+    // Split dice across defenders proportionally by troop count
+    const targets: DiceRollTarget[] = [];
+    let diceUsed = 0;
+    let totalSuccesses = 0;
+    let totalNetHits = 0;
+
+    for (let di = 0; di < liveDefenders.length; di++) {
+      const def = liveDefenders[di];
+      const isLast = di === liveDefenders.length - 1;
+      const proportion = totalDefTroops > 0 ? totalTroops(def.troopCounts) / totalDefTroops : 1 / liveDefenders.length;
+      const diceForTarget = isLast ? numDice - diceUsed : Math.round(numDice * proportion);
+
+      const defArmourMod = armourToHitsMod(def.armour);
+      const effectiveThreshold = Math.max(1, baseThreshold + defArmourMod - attackerApMod);
+
+      let hits = 0;
+      for (let i = diceUsed; i < diceUsed + diceForTarget && i < dice.length; i++) {
+        if (dice[i] + bonus >= effectiveThreshold) hits++;
+      }
+
+      totalSuccesses += hits;
+      totalNetHits += hits;
+      hitsByDefender.set(def.id, (hitsByDefender.get(def.id) ?? 0) + hits);
+
+      targets.push({
+        targetUnitId: def.id,
+        targetUnitName: def.name,
+        diceCount: diceForTarget,
+        threshold: effectiveThreshold,
+        hits,
+      });
+
+      diceUsed += diceForTarget;
     }
 
-    const targetArmour = defenderFrontline.length > 0
-      ? Math.max(0, avgArmour(defenderFrontline) - unit.ap)
-      : 0;
-    const netHits = Math.max(0, successes - Math.round(targetArmour));
-
-    rolls.push({ unitId: unit.id, unitName: unit.name, phase, dice, bonus, threshold, successes, armourReduction: Math.round(targetArmour), netHits });
-    totalDamage += netHits;
+    rolls.push({
+      unitId: unit.id, unitName: unit.name, phase, dice, bonus,
+      threshold: baseThreshold, successes: totalSuccesses,
+      targets, netHits: totalNetHits,
+    });
   }
 
-  return totalDamage;
-}
-
-function avgArmour(units: CombatUnit[]): number {
-  if (units.length === 0) return 0;
-  return units.reduce((sum, u) => sum + u.armour, 0) / units.length;
-}
-
-function applyDamage(
-  totalDamage: number,
-  allEnemies: CombatUnit[],
-  frontline: CombatUnit[],
-  backline: CombatUnit[],
-  casualties: CombatCasualty[],
-  side: 'attacker' | 'defender',
-) {
-  if (totalDamage <= 0) return;
-  const targets = frontline.filter(u => totalTroops(u.troopCounts) > 0);
-  const flankTargets = backline.filter(u => totalTroops(u.troopCounts) > 0);
-  const frontDamage = flankTargets.length > 0 ? Math.ceil(totalDamage * 0.8) : totalDamage;
-  const flankDamage = flankTargets.length > 0 ? totalDamage - frontDamage : 0;
-  distributeDamage(frontDamage, targets, casualties, side);
-  distributeDamage(flankDamage, flankTargets, casualties, side);
+  return hitsByDefender;
 }
 
 /**
- * Distribute troop casualties.
- * Each net hit ~= 5 troop casualties, spread evenly.
- * Casualties remove from rookies first, then capable, then veteran.
+ * Apply targeted damage. Each defender receives hits aimed specifically at it.
+ * When flanking, 20% of frontline hits spill to backline targets.
+ */
+function applyTargetedDamage(
+  hitsByDefender: Map<string, number>,
+  frontline: CombatUnit[],
+  flankTargets: CombatUnit[],
+  casualties: CombatCasualty[],
+  side: 'attacker' | 'defender',
+) {
+  for (const unit of frontline) {
+    const hits = hitsByDefender.get(unit.id) ?? 0;
+    if (hits <= 0) continue;
+
+    // If flanking, 20% of this unit's hits spill to backline
+    let frontHits = hits;
+    let spillHits = 0;
+    if (flankTargets.length > 0) {
+      spillHits = Math.floor(hits * 0.2);
+      frontHits = hits - spillHits;
+    }
+
+    applyHitsToUnit(frontHits, unit, casualties, side);
+
+    if (spillHits > 0) {
+      // Distribute spill evenly across backline
+      distributeDamage(spillHits, flankTargets.filter(u => totalTroops(u.troopCounts) > 0), casualties, side);
+    }
+  }
+}
+
+/** Apply hits to a single unit. Each hit = 5 troop casualties. Rookies die first. */
+function applyHitsToUnit(
+  hits: number,
+  unit: CombatUnit,
+  casualties: CombatCasualty[],
+  side: 'attacker' | 'defender',
+) {
+  if (hits <= 0 || totalTroops(unit.troopCounts) <= 0) return;
+  const troopsPerHit = 5;
+  let remaining = Math.min(hits * troopsPerHit, totalTroops(unit.troopCounts));
+  const tc = unit.troopCounts;
+
+  const rookieLoss = Math.min(remaining, tc.rookie);
+  tc.rookie -= rookieLoss;
+  remaining -= rookieLoss;
+
+  const capableLoss = Math.min(remaining, tc.capable);
+  tc.capable -= capableLoss;
+  remaining -= capableLoss;
+
+  const veteranLoss = Math.min(remaining, tc.veteran);
+  tc.veteran -= veteranLoss;
+
+  const totalLost = rookieLoss + capableLoss + veteranLoss;
+  unit.state = getUnitState(totalTroops(tc), unit.maxTroops);
+
+  casualties.push({
+    unitId: unit.id,
+    side,
+    troopsLost: totalLost,
+    newTroopCounts: { ...tc },
+    newState: unit.state,
+  });
+}
+
+/**
+ * Distribute troop casualties evenly across multiple targets.
+ * Used for flanking spill damage. Each net hit = 5 troop casualties.
  */
 function distributeDamage(
   damage: number,
@@ -449,38 +543,9 @@ function distributeDamage(
   side: 'attacker' | 'defender',
 ) {
   if (targets.length === 0 || damage <= 0) return;
-  const troopsPerHit = 5;
-  const troopsLostPerUnit = Math.round((damage / targets.length) * troopsPerHit);
-
+  const hitsPerUnit = Math.round(damage / targets.length);
   for (const unit of targets) {
-    if (troopsLostPerUnit <= 0) continue;
-
-    // Remove from rookies first, then capable, then veteran
-    let remaining = Math.min(troopsLostPerUnit, totalTroops(unit.troopCounts));
-    const tc = unit.troopCounts;
-
-    const rookieLoss = Math.min(remaining, tc.rookie);
-    tc.rookie -= rookieLoss;
-    remaining -= rookieLoss;
-
-    const capableLoss = Math.min(remaining, tc.capable);
-    tc.capable -= capableLoss;
-    remaining -= capableLoss;
-
-    const veteranLoss = Math.min(remaining, tc.veteran);
-    tc.veteran -= veteranLoss;
-
-    const totalLost = rookieLoss + capableLoss + veteranLoss;
-    const total = totalTroops(tc);
-    unit.state = getUnitState(total, unit.maxTroops);
-
-    casualties.push({
-      unitId: unit.id,
-      side,
-      troopsLost: totalLost,
-      newTroopCounts: { ...tc },
-      newState: unit.state,
-    });
+    applyHitsToUnit(hitsPerUnit, unit, casualties, side);
   }
 }
 
@@ -759,7 +824,7 @@ function resolveNavalFire(ships: CombatShip[], commandRating: number, hasModernD
       dice.push(roll);
       if (roll + bonus >= threshold) successes++;
     }
-    rolls.push({ unitId: ship.id, unitName: null, phase: 'fire', dice, bonus, threshold, successes, armourReduction: 0, netHits: successes });
+    rolls.push({ unitId: ship.id, unitName: null, phase: 'fire', dice, bonus, threshold, successes, targets: [], netHits: successes });
     totalDamage += successes;
   }
   return totalDamage;

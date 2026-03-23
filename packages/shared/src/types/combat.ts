@@ -2,17 +2,30 @@
 
 import type { ShipType, UnitPosition, UnitState } from './military.js';
 
+/** Per-target breakdown within a single attacker's dice roll. */
+export interface DiceRollTarget {
+  targetUnitId: string;
+  targetUnitName: string | null;
+  diceCount: number;        // how many dice aimed at this target
+  threshold: number;        // effective hitsOn (base + armour mod - AP mod)
+  hits: number;             // dice that met threshold
+}
+
 export interface DiceRoll {
   unitId: string;
   /** Template name for display purposes. */
   unitName: string | null;
   phase: 'fire' | 'shock';
   dice: number[];          // raw d20 values
-  bonus: number;           // general command + terrain + vet
-  threshold: number;       // hits-on value (after weighted vet modifier)
-  successes: number;       // dice that met threshold after bonus
-  armourReduction: number; // target armour minus AP
-  netHits: number;         // successes - armour reduction (min 0)
+  bonus: number;           // general command + terrain + tech
+  /** Base threshold before per-target armour/AP adjustments. */
+  threshold: number;
+  /** Total successes across all targets. */
+  successes: number;
+  /** Per-target hit breakdown (armour/AP baked into each target's threshold). */
+  targets: DiceRollTarget[];
+  /** Total hits after armour (sum of targets[].hits). Replaces old netHits. */
+  netHits: number;
 }
 
 export interface CombatRound {

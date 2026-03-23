@@ -21,6 +21,13 @@ export const MODERN_DOCTRINE_BONUS = 1;
 /** Dice multiplier: scales dice count for granularity without changing lethality. */
 export const DICE_MULTIPLIER = 4;
 
+/**
+ * Armour/AP → hitsOn conversion divisor.
+ * Raw armour/AP values are divided by this and rounded up to get the hitsOn modifier.
+ * e.g. plate (6 armour) → ceil(6/2) = +3 hitsOn; rifle (5 AP) → ceil(5/2) = -3 hitsOn.
+ */
+export const ARMOUR_HITSON_DIVISOR = 2;
+
 /** Siege assault: defender fires first, then attacker fires, then attacker resolves shock. */
 export const SIEGE_PHASES = ['defender_fire', 'attacker_fire', 'attacker_shock'] as const;
 

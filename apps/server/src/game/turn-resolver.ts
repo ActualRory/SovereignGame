@@ -4,7 +4,7 @@
  * Phase 2 implements steps 1-5 + 13 (tax, production, upkeep, construction, research, pop growth).
  */
 
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 import { resolveMovementStepByStep } from './movement-resolver.js';
 import {
@@ -2283,7 +2283,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   {
     // Increment turnsInRank for all living nobles
     await db.update(schema.nobles)
-      .set({ turnsInRank: db.raw`turns_in_rank + 1` as any })
+      .set({ turnsInRank: sql`${schema.nobles.turnsInRank} + 1` })
       .where(and(eq(schema.nobles.gameId, gameId), eq(schema.nobles.isAlive, true)));
 
     // Aging: every MINOR_TURNS_PER_YEAR turns (once per year), increment age

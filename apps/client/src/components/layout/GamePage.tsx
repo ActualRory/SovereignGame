@@ -86,6 +86,9 @@ export function GamePage() {
         message: `Turn ${data.turnNumber} has been resolved.`,
         isRead: false,
       });
+
+      // Fetch fresh state after resolution
+      fetchState();
     });
 
     socket.on('turn_started', () => {

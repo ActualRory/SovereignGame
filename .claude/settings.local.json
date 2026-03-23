@@ -29,7 +29,8 @@
       "Read(//c/Users/Rory/AppData/Local/Programs/**)",
       "Bash(grep -n \"combatLogs\\\\|CombatResult\\\\|CombatRound\" 'c:\\\\Users\\\\Rory\\\\Kingdoms Game\\\\apps\\\\client\\\\src\\\\store\\\\index.ts' c:UsersRoryKingdoms Gameappsclientsrcstoreslices/*.ts)",
       "Bash(xargs ls:*)",
-      "Bash(grep -n \"countryName\\\\|rulerName\" '/c/Users/Rory/Kingdoms Game/apps/server/src'/**/*.ts)"
+      "Bash(grep -n \"countryName\\\\|rulerName\" '/c/Users/Rory/Kingdoms Game/apps/server/src'/**/*.ts)",
+      "Bash(npx vite:*)"
     ]
   }
 }

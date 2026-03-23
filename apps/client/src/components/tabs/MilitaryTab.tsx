@@ -4,10 +4,11 @@ import { useStore } from '../../store/index.js';
 import {
   STATE_DICE_MULTIPLIER, SHIPS, BUILDINGS,
   WEAPONS, SHIELDS, ARMOUR_TYPES, MOUNT_TYPES,
+  HORSE_BREEDS, GRYPHON_BREEDS, RANGED_WEAPONS,
   computeUnitStats, MEN_PER_COMPANY, MEN_PER_SQUADRON,
   canGoInSecondary, canGoInSidearm, secondarySlotAllowed,
   type ShipType, type UnitTemplate, type WeaponDesign, type TroopCounts,
-  type WeaponType, type ShieldType, type ArmourType, type MountType,
+  type WeaponType, type ShieldType, type ArmourType, type MountType, type MountBreed,
   type WeaponDef, type ShieldDef,
 } from '@kingdoms/shared';
 import { Tooltip } from '../shared/Tooltip.js';
@@ -55,7 +56,7 @@ export function MilitaryTab() {
   const techProgress = useStore(s => s.techProgress) as Array<{ tech: string; isResearched: boolean }>;
   const researchedTechs = new Set(techProgress.filter(t => t.isResearched).map(t => t.tech));
 
-  const [activeTab, setActiveTab] = useState<'armies' | 'designer' | 'weapons' | 'production'>('armies');
+  const [activeTab, setActiveTab] = useState<'armies' | 'orbat' | 'designer' | 'weapons' | 'production'>('armies');
 
   if (!player) return <div><h2>Military</h2><p>Loading...</p></div>;
 
@@ -90,7 +91,7 @@ export function MilitaryTab() {
 
       {/* Sub-tabs */}
       <div style={{ display: 'flex', gap: 4, marginTop: 16, marginBottom: 12, borderBottom: '1px solid var(--border-color)', paddingBottom: 4 }}>
-        {(['armies', 'designer', 'weapons', 'production'] as const).map(tab => (
+        {(['armies', 'orbat', 'designer', 'weapons', 'production'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -105,7 +106,7 @@ export function MilitaryTab() {
               fontFamily: 'var(--font-body)',
             }}
           >
-            {tab === 'armies' ? 'Armies' : tab === 'designer' ? 'Unit Designer' : tab === 'weapons' ? 'Weapon Designer' : 'Production'}
+            {tab === 'armies' ? 'Armies' : tab === 'orbat' ? 'ORBAT' : tab === 'designer' ? 'Unit Designer' : tab === 'weapons' ? 'Weapon Designer' : 'Production'}
           </button>
         ))}
       </div>
@@ -182,6 +183,15 @@ export function MilitaryTab() {
 
           <NavalCodex />
         </>
+      )}
+
+      {/* ORBAT Tab */}
+      {activeTab === 'orbat' && (
+        <OrbatTab
+          armies={myArmies}
+          templates={myTemplates}
+          weaponDesigns={myDesigns}
+        />
       )}
 
       {/* Unit Designer Tab */}
@@ -1254,59 +1264,23 @@ function UnitRow({ unit, slug, armyId, templates, weaponDesigns }: {
       </div>
 
       {expanded && (
-        <div className="unit-detail-panel">
-          <div className="unit-subtitle-row">
-            {editingSubtitle ? (
-              <input className="unit-subtitle-input" value={subtitleValue}
-                onChange={e => setSubtitleValue(e.target.value)}
-                onBlur={() => { setEditingSubtitle(false); saveUnitField('subtitle', subtitleValue); }}
-                onKeyDown={e => { if (e.key === 'Enter') { setEditingSubtitle(false); saveUnitField('subtitle', subtitleValue); } }}
-                placeholder='"Unbroken Since Edenmoor"' autoFocus />
-            ) : (
-              <span className={`unit-subtitle-text ${unit.subtitle ? '' : 'unit-subtitle-empty'}`}
-                onDoubleClick={() => { setEditingSubtitle(true); setSubtitleValue(unit.subtitle ?? ''); }}
-                title="Double-click to add a subtitle">
-                {unit.subtitle || 'Add a battle cry or motto...'}
-              </span>
-            )}
-          </div>
-
-          {/* Troop breakdown */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 12 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>Troop Tiers</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <span style={{ color: 'var(--text-muted)' }}>Rookie: {troopCounts.rookie}</span>
-                <span style={{ color: 'var(--accent-blue)' }}>Capable: {troopCounts.capable}</span>
-                <span style={{ color: 'var(--accent-gold)' }}>Veteran: {troopCounts.veteran}</span>
-              </div>
-            </div>
-            <div>
-              <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>XP</div>
-              <div>{unit.xp ?? 0}</div>
-            </div>
-          </div>
-
-          {/* Template info */}
-          {tmpl && (
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
-              Template: {tmpl.name} · {tmpl.companiesOrSquadrons} {tmpl.isMounted ? 'squadrons' : 'companies'}
-              {[tmpl.primary, tmpl.sidearm, tmpl.armour, tmpl.mount].filter(Boolean).length > 0 && (
-                <> · {[tmpl.primary, tmpl.sidearm, tmpl.armour, tmpl.mount].filter(Boolean).map(e => fmt(e!)).join(', ')}</>
-              )}
-            </div>
-          )}
-
-          {/* Computed stats */}
-          {stats && <StatsPreview stats={stats} />}
-
-          {/* Status line */}
-          <div className="unit-status-line" style={{ marginTop: 8 }}>
-            <span style={{ color: stateInfo.color }}>{stateInfo.label} ({pct}%)</span>
-            <span>Dice: x{diceMultiplier}</span>
-            <span>Position: {fmt(unit.position ?? 'frontline')}</span>
-          </div>
-        </div>
+        <UnitTOE
+          unit={unit}
+          tmpl={tmpl ?? null}
+          weaponDesigns={weaponDesigns}
+          stats={stats}
+          troopCounts={troopCounts}
+          maxTroops={maxTroops}
+          total={total}
+          pct={pct}
+          stateInfo={stateInfo}
+          diceMultiplier={diceMultiplier}
+          editingSubtitle={editingSubtitle}
+          subtitleValue={subtitleValue}
+          setEditingSubtitle={setEditingSubtitle}
+          setSubtitleValue={setSubtitleValue}
+          saveUnitField={saveUnitField}
+        />
       )}
     </div>
   );
@@ -1392,6 +1366,366 @@ function RecruitPanel({ settlement, armies, templates, weaponDesigns, onRecruit 
       </div>
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
         Cost: 200g + equipment from storage
+      </div>
+    </div>
+  );
+}
+
+// ─── Unit TO&E Detail ──────────────────────────────────────────────────────
+
+/** Get display name for a weapon/shield/armour slot, including weapon design name if applicable. */
+function getEquipmentLabel(
+  slotType: WeaponType | ShieldType | ArmourType | MountType | null,
+  designId: string | null | undefined,
+  weaponDesigns: WeaponDesign[],
+): string {
+  if (!slotType) return '—';
+  const design = designId ? weaponDesigns.find(d => d.id === designId) : null;
+  if (design) return `${design.name} (${fmt(slotType)})`;
+  return fmt(slotType);
+}
+
+/** Get NATO-style unit type symbol based on template equipment. */
+function getUnitTypeSymbol(tmpl: UnitTemplate | null): { symbol: string; label: string } {
+  if (!tmpl) return { symbol: '?', label: 'Unknown' };
+  if (tmpl.isIrregular) return { symbol: '~', label: 'Irregular' };
+  if (tmpl.isMounted) return { symbol: '⫽', label: 'Cavalry' };
+  if (tmpl.primary && RANGED_WEAPONS.has(tmpl.primary as WeaponType))
+    return { symbol: '●', label: 'Ranged' };
+  return { symbol: '✕', label: 'Infantry' };
+}
+
+function UnitTOE({ unit, tmpl, weaponDesigns, stats, troopCounts, maxTroops, total, pct, stateInfo, diceMultiplier, editingSubtitle, subtitleValue, setEditingSubtitle, setSubtitleValue, saveUnitField }: {
+  unit: any;
+  tmpl: UnitTemplate | null;
+  weaponDesigns: WeaponDesign[];
+  stats: ReturnType<typeof computeUnitStats> | null;
+  troopCounts: TroopCounts;
+  maxTroops: number;
+  total: number;
+  pct: number;
+  stateInfo: { label: string; color: string };
+  diceMultiplier: number;
+  editingSubtitle: boolean;
+  subtitleValue: string;
+  setEditingSubtitle: (v: boolean) => void;
+  setSubtitleValue: (v: string) => void;
+  saveUnitField: (field: 'name' | 'subtitle', value: string) => void;
+}) {
+  const generals = useStore(s => (s as any).generals) as any[] | undefined;
+  const held: { primary: number; secondary: number; sidearm: number; armour: number; mounts: number } =
+    unit.heldEquipment ?? { primary: 0, secondary: 0, sidearm: 0, armour: 0, mounts: 0 };
+
+  // Find officer assigned to this unit
+  const officer = generals?.find((g: any) => g.assignedUnitId === unit.id);
+
+  // Build equipment rows: [label, held, required, slot icon]
+  const equipRows: Array<{ label: string; held: number; required: number; icon: string }> = [];
+  if (tmpl && !tmpl.isIrregular) {
+    if (tmpl.primary) {
+      equipRows.push({
+        label: getEquipmentLabel(tmpl.primary, tmpl.primaryDesignId, weaponDesigns),
+        held: held.primary, required: maxTroops, icon: '⚔',
+      });
+    }
+    if ((tmpl as any).secondary) {
+      equipRows.push({
+        label: getEquipmentLabel((tmpl as any).secondary, (tmpl as any).secondaryDesignId, weaponDesigns),
+        held: held.secondary, required: maxTroops, icon: (SHIELDS as any)[(tmpl as any).secondary] ? '🛡' : '⚔',
+      });
+    }
+    if (tmpl.sidearm) {
+      equipRows.push({
+        label: getEquipmentLabel(tmpl.sidearm, tmpl.sidearmDesignId, weaponDesigns),
+        held: held.sidearm, required: maxTroops, icon: '🗡',
+      });
+    }
+    if (tmpl.armour) {
+      equipRows.push({
+        label: fmt(tmpl.armour),
+        held: held.armour, required: maxTroops, icon: '🛡',
+      });
+    }
+    if (tmpl.mount && tmpl.isMounted) {
+      const breedName = unit.mountBreed
+        ? ((HORSE_BREEDS as any)[unit.mountBreed]?.name ?? (GRYPHON_BREEDS as any)[unit.mountBreed]?.name ?? fmt(unit.mountBreed))
+        : null;
+      equipRows.push({
+        label: breedName ? `${fmt(tmpl.mount)} (${breedName})` : fmt(tmpl.mount),
+        held: held.mounts, required: maxTroops, icon: '🐎',
+      });
+    }
+  }
+
+  return (
+    <div className="unit-detail-panel">
+      {/* Subtitle */}
+      <div className="unit-subtitle-row">
+        {editingSubtitle ? (
+          <input className="unit-subtitle-input" value={subtitleValue}
+            onChange={e => setSubtitleValue(e.target.value)}
+            onBlur={() => { setEditingSubtitle(false); saveUnitField('subtitle', subtitleValue); }}
+            onKeyDown={e => { if (e.key === 'Enter') { setEditingSubtitle(false); saveUnitField('subtitle', subtitleValue); } }}
+            placeholder='"Unbroken Since Edenmoor"' autoFocus />
+        ) : (
+          <span className={`unit-subtitle-text ${unit.subtitle ? '' : 'unit-subtitle-empty'}`}
+            onDoubleClick={() => { setEditingSubtitle(true); setSubtitleValue(unit.subtitle ?? ''); }}
+            title="Double-click to add a subtitle">
+            {unit.subtitle || 'Add a battle cry or motto...'}
+          </span>
+        )}
+      </div>
+
+      {/* ── Strength ── */}
+      <div className="toe-section">
+        <div className="toe-section-label">Strength</div>
+        <div className="toe-strength-row">
+          <span className="toe-strength-numbers" style={{ color: stateInfo.color }}>
+            {total} / {maxTroops}
+          </span>
+          <span className="toe-strength-pct" style={{ color: stateInfo.color }}>
+            {stateInfo.label} ({pct}%)
+          </span>
+        </div>
+        {/* Troop tier bars */}
+        {total > 0 && (
+          <div className="toe-tier-bars">
+            <div className="toe-tier-row">
+              <span className="toe-tier-label" style={{ color: 'var(--text-muted)' }}>Rookie</span>
+              <div className="toe-tier-bar-track">
+                <div className="toe-tier-bar-fill" style={{ width: `${(troopCounts.rookie / maxTroops) * 100}%`, background: 'var(--text-muted)' }} />
+              </div>
+              <span className="toe-tier-count">{troopCounts.rookie}</span>
+            </div>
+            <div className="toe-tier-row">
+              <span className="toe-tier-label" style={{ color: 'var(--accent-blue)' }}>Capable</span>
+              <div className="toe-tier-bar-track">
+                <div className="toe-tier-bar-fill" style={{ width: `${(troopCounts.capable / maxTroops) * 100}%`, background: 'var(--accent-blue)' }} />
+              </div>
+              <span className="toe-tier-count">{troopCounts.capable}</span>
+            </div>
+            <div className="toe-tier-row">
+              <span className="toe-tier-label" style={{ color: 'var(--accent-gold)' }}>Veteran</span>
+              <div className="toe-tier-bar-track">
+                <div className="toe-tier-bar-fill" style={{ width: `${(troopCounts.veteran / maxTroops) * 100}%`, background: 'var(--accent-gold)' }} />
+              </div>
+              <span className="toe-tier-count">{troopCounts.veteran}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Equipment ── */}
+      {equipRows.length > 0 && (
+        <div className="toe-section">
+          <div className="toe-section-label">Equipment</div>
+          <div className="toe-equip-header">
+            <span />
+            <span />
+            <span className="toe-equip-col-label">Held</span>
+            <span className="toe-equip-col-label">Req.</span>
+          </div>
+          {equipRows.map((row, i) => {
+            const shortage = row.required - row.held;
+            return (
+              <div key={i} className="toe-equip-row">
+                <span className="toe-equip-icon">{row.icon}</span>
+                <span className="toe-equip-name">{row.label}</span>
+                <span className={`toe-equip-count ${shortage > 0 ? 'toe-equip-shortage' : ''}`}>{row.held}</span>
+                <span className="toe-equip-count">{row.required}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Stats ── */}
+      {stats && (
+        <div className="toe-section">
+          <div className="toe-section-label">Combat Stats</div>
+          <StatsPreview stats={stats} />
+        </div>
+      )}
+
+      {/* ── Status line ── */}
+      <div className="toe-status-row">
+        <span>Dice: x{diceMultiplier}</span>
+        <span>Position: {fmt(unit.position ?? 'frontline')}</span>
+        <span>XP: {unit.xp ?? 0}</span>
+        {officer && (
+          <span style={{ color: 'var(--accent-gold)' }}>
+            {fmt(officer.rank ?? 'major')}. {officer.name} (Cmd: {officer.commandRating})
+          </span>
+        )}
+      </div>
+
+      {/* Template reference */}
+      {tmpl && (
+        <div className="toe-template-ref">
+          Template: {tmpl.name} · {tmpl.companiesOrSquadrons} {tmpl.isMounted ? 'squadrons' : 'companies'}
+          {unit.isOutdated && <span className="toe-outdated-badge">OUTDATED</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ORBAT Tab ─────────────────────────────────────────────────────────────
+
+function OrbatTab({ armies, templates, weaponDesigns }: {
+  armies: any[];
+  templates: UnitTemplate[];
+  weaponDesigns: WeaponDesign[];
+}) {
+  const generals = useStore(s => (s as any).generals) as any[] | undefined;
+  const player = useStore(s => s.player) as Record<string, unknown> | null;
+  const [expandedUnits, setExpandedUnits] = useState<Set<string>>(new Set());
+
+  const toggleUnit = (id: string) => {
+    setExpandedUnits(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  if (armies.length === 0) {
+    return (
+      <div className="orbat-empty">
+        <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No armies raised. Your order of battle stands empty.</p>
+      </div>
+    );
+  }
+
+  // Calculate nation-level totals
+  const nationTotalMen = armies.reduce((sum: number, a: any) => {
+    const units = (a.units ?? []) as any[];
+    return sum + units.filter((u: any) => u.state !== 'destroyed').reduce((us: number, u: any) => {
+      const tc: TroopCounts = u.troopCounts ?? { rookie: 0, capable: 0, veteran: 0 };
+      return us + tc.rookie + tc.capable + tc.veteran;
+    }, 0);
+  }, 0);
+
+  const nationTotalUnits = armies.reduce((sum: number, a: any) =>
+    sum + ((a.units ?? []) as any[]).filter((u: any) => u.state !== 'destroyed').length, 0);
+
+  return (
+    <div className="orbat-container">
+      {/* Nation root node */}
+      <div className="orbat-nation-node">
+        <div className="orbat-node-box orbat-node-nation">
+          <div className="orbat-node-name">{(player as any)?.nationName ?? 'Your Realm'}</div>
+          <div className="orbat-node-meta">{armies.length} armies · {nationTotalUnits} units · {nationTotalMen.toLocaleString()} men</div>
+        </div>
+      </div>
+
+      {/* Army connector line */}
+      <div className="orbat-connector-vertical" />
+
+      {/* Army level */}
+      <div className="orbat-army-row">
+        {armies.map((army: any, armyIdx: number) => {
+          const units = ((army.units ?? []) as any[]).filter((u: any) => u.state !== 'destroyed');
+          const general = generals?.find((g: any) => g.id === army.generalId);
+          const armyTotal = units.reduce((sum: number, u: any) => {
+            const tc: TroopCounts = u.troopCounts ?? { rookie: 0, capable: 0, veteran: 0 };
+            return sum + tc.rookie + tc.capable + tc.veteran;
+          }, 0);
+
+          return (
+            <div key={army.id} className="orbat-army-branch">
+              {/* Army node */}
+              <div className="orbat-node-box orbat-node-army">
+                <div className="orbat-army-symbol">
+                  {army.isNaval ? '⚓' : '⚔'}
+                </div>
+                <div className="orbat-node-name">{army.name}</div>
+                {general && (
+                  <div className="orbat-node-general">
+                    {fmt(general.rank ?? 'general')}. {general.name} ({general.commandRating})
+                  </div>
+                )}
+                <div className="orbat-node-meta">
+                  {units.length} units · {armyTotal.toLocaleString()} men
+                </div>
+                <div className="orbat-node-location">({army.hexQ}, {army.hexR})</div>
+              </div>
+
+              {/* Unit connector */}
+              {units.length > 0 && <div className="orbat-connector-vertical orbat-connector-short" />}
+
+              {/* Unit level */}
+              {units.length > 0 && (
+                <div className="orbat-unit-row">
+                  {units.map((u: any) => {
+                    const tmpl = templates.find(t => t.id === u.templateId);
+                    const typeInfo = getUnitTypeSymbol(tmpl ?? null);
+                    const tc: TroopCounts = u.troopCounts ?? { rookie: 0, capable: 0, veteran: 0 };
+                    const uTotal = tc.rookie + tc.capable + tc.veteran;
+                    const maxTroops = tmpl
+                      ? (tmpl.isMounted ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON : tmpl.companiesOrSquadrons * MEN_PER_COMPANY)
+                      : 100;
+                    const uPct = maxTroops > 0 ? Math.round((uTotal / maxTroops) * 100) : 0;
+                    const unitStateInfo = STATE_LABELS[u.state] ?? STATE_LABELS.full;
+                    const isExpanded = expandedUnits.has(u.id);
+                    const stats = tmpl ? computeUnitStats(tmpl, weaponDesigns) : null;
+                    const displayName = u.name || tmpl?.name || 'Unit';
+
+                    return (
+                      <div key={u.id} className="orbat-unit-branch">
+                        <div
+                          className={`orbat-node-box orbat-node-unit ${isExpanded ? 'orbat-node-expanded' : ''}`}
+                          onClick={() => toggleUnit(u.id)}
+                          title="Click to expand TO&E"
+                        >
+                          <div className="orbat-unit-symbol" style={{ color: unitStateInfo.color }}>
+                            {typeInfo.symbol}
+                          </div>
+                          <div className="orbat-unit-name">{displayName}</div>
+                          <div className="orbat-unit-strength" style={{ color: unitStateInfo.color }}>
+                            {uTotal}/{maxTroops}
+                          </div>
+                        </div>
+
+                        {/* Expanded TO&E inline */}
+                        {isExpanded && tmpl && (
+                          <div className="orbat-unit-toe">
+                            <div className="orbat-toe-type">{typeInfo.label} · {tmpl.companiesOrSquadrons} {tmpl.isMounted ? 'sqn' : 'coy'}</div>
+                            <div className="orbat-toe-tiers">
+                              <span style={{ color: 'var(--text-muted)' }}>R:{tc.rookie}</span>
+                              <span style={{ color: 'var(--accent-blue)' }}>C:{tc.capable}</span>
+                              <span style={{ color: 'var(--accent-gold)' }}>V:{tc.veteran}</span>
+                            </div>
+                            {!tmpl.isIrregular && (
+                              <div className="orbat-toe-equip">
+                                {tmpl.primary && <div>{getEquipmentLabel(tmpl.primary, tmpl.primaryDesignId, weaponDesigns)}</div>}
+                                {(tmpl as any).secondary && <div>{getEquipmentLabel((tmpl as any).secondary, (tmpl as any).secondaryDesignId, weaponDesigns)}</div>}
+                                {tmpl.sidearm && <div>{getEquipmentLabel(tmpl.sidearm, tmpl.sidearmDesignId, weaponDesigns)}</div>}
+                                {tmpl.armour && <div>{fmt(tmpl.armour)}</div>}
+                                {tmpl.mount && <div>{fmt(tmpl.mount)}{u.mountBreed ? ` (${fmt(u.mountBreed)})` : ''}</div>}
+                              </div>
+                            )}
+                            {stats && (
+                              <div className="orbat-toe-stats">
+                                {(['fire', 'shock', 'defence', 'morale', 'armour', 'ap'] as const).map(k => (
+                                  <span key={k}>{k[0].toUpperCase()}: {(stats as any)[k]}</span>
+                                ))}
+                              </div>
+                            )}
+                            <div className="orbat-toe-status">
+                              <span style={{ color: unitStateInfo.color }}>{unitStateInfo.label} ({uPct}%)</span>
+                              <span>{fmt(u.position ?? 'frontline')}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

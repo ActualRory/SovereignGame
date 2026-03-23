@@ -89,8 +89,6 @@ export function TurnBar() {
           player: { ...player, hasSubmitted: true } as any,
           players: updatedPlayers,
         });
-        // Clear pending orders after successful submission
-        resetOrders((player as any).taxRate ?? 'low');
       }
     } catch (err) {
       console.error('Failed to submit turn:', err);

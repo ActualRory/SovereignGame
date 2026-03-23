@@ -111,7 +111,6 @@ export function TopBar() {
           player: { ...player, hasSubmitted: true } as any,
           players: updatedPlayers,
         });
-        resetOrders((player as any)?.taxRate ?? 'low');
       }
     } catch (err) {
       console.error('Failed to submit turn:', err);

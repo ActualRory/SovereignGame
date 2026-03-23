@@ -90,6 +90,10 @@ export function GamePage() {
 
     socket.on('turn_started', () => {
       fetchState();
+      // Clear pending orders for the new turn
+      const state = useStore.getState();
+      const taxRate = (state.player as any)?.taxRate ?? 'low';
+      state.resetOrders(taxRate);
     });
 
     socket.on('player_submitted', ({ playerId }: { playerId: string }) => {

@@ -73,7 +73,7 @@ export function ArmyDetailPanel() {
   const player = useStore(s => s.player) as Record<string, unknown> | null;
   const unitTemplates = useStore(s => s.unitTemplates) as UnitTemplate[];
   const weaponDesigns = useStore(s => s.weaponDesigns) as WeaponDesign[];
-  const generals = useStore(s => (s as any).generals) as any[] | undefined;
+  const nobles = useStore(s => s.nobles) as any[] | undefined;
   const selectedArmyId = useStore(s => s.selectedArmyId);
   const setSelectedArmyId = useStore(s => s.setSelectedArmyId);
   const setIsSelectingMoveTarget = useStore(s => s.setIsSelectingMoveTarget);
@@ -86,7 +86,7 @@ export function ArmyDetailPanel() {
   const playerId = player?.id as string | undefined;
   const isOwn = army.ownerId === playerId;
   const armyOwner = players.find((p: any) => p.id === army.ownerId) as any;
-  const general = generals?.find((g: any) => g.id === army.generalId);
+  const commander = nobles?.find((n: any) => n.id === army.commanderNobleId);
   const units = ((army.units ?? []) as any[]).filter((u: any) => u.state !== 'destroyed');
   const isSelected = selectedArmyId === army.id;
 
@@ -145,15 +145,15 @@ export function ArmyDetailPanel() {
         </div>
       </div>
 
-      {/* General */}
-      {general ? (
+      {/* Commander */}
+      {commander ? (
         <div className="army-examine-general">
-          <span style={{ color: 'var(--accent-gold)' }}>{fmt(general.rank ?? 'general')}. {general.name}</span>
-          <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>Command: {general.commandRating}</span>
+          <span style={{ color: 'var(--accent-gold)' }}>{fmt(commander.rank)} {commander.name}</span>
+          <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>M:{commander.martial} I:{commander.intelligence} C:{commander.cunning}</span>
         </div>
       ) : (
         <div className="army-examine-general" style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-          No general assigned
+          No commander assigned
         </div>
       )}
 
@@ -193,7 +193,7 @@ export function ArmyDetailPanel() {
       )}
 
       {units.map((u: any) => (
-        <ArmyPanelUnitCard key={u.id} unit={u} templates={unitTemplates} weaponDesigns={weaponDesigns} generals={generals} />
+        <ArmyPanelUnitCard key={u.id} unit={u} templates={unitTemplates} weaponDesigns={weaponDesigns} nobles={nobles} />
       ))}
     </div>
   );
@@ -201,11 +201,11 @@ export function ArmyDetailPanel() {
 
 // ─── Unit Card (within army panel) ────────────────────────────────────────
 
-function ArmyPanelUnitCard({ unit, templates, weaponDesigns, generals }: {
+function ArmyPanelUnitCard({ unit, templates, weaponDesigns, nobles }: {
   unit: any;
   templates: UnitTemplate[];
   weaponDesigns: WeaponDesign[];
-  generals: any[] | undefined;
+  nobles: any[] | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
   const tmpl = templates.find(t => t.id === unit.templateId);
@@ -220,7 +220,7 @@ function ArmyPanelUnitCard({ unit, templates, weaponDesigns, generals }: {
   const diceMultiplier = STATE_DICE_MULTIPLIER[unit.state] ?? 1;
   const stats = tmpl ? computeUnitStats(tmpl, weaponDesigns) : null;
   const displayName = unit.name || tmpl?.name || 'Unknown Unit';
-  const officer = generals?.find((g: any) => g.assignedUnitId === unit.id);
+  const officer = nobles?.find((n: any) => n.assignmentType === 'unit_ic' && n.assignedEntityId === unit.id);
 
   const held = unit.heldEquipment ?? { primary: 0, secondary: 0, sidearm: 0, armour: 0, mounts: 0 };
 

@@ -67,7 +67,7 @@ export function BattleOverlay() {
             </div>
 
             {log.attackerCommandBonus > 0 && (
-              <div className="battle-modifier">General: +{log.attackerCommandBonus} command</div>
+              <div className="battle-modifier">Commander: +{log.attackerCommandBonus} bonus</div>
             )}
 
             <div className="battle-troops-summary">
@@ -130,7 +130,7 @@ export function BattleOverlay() {
             </div>
 
             {log.defenderCommandBonus > 0 && (
-              <div className="battle-modifier">General: +{log.defenderCommandBonus} command</div>
+              <div className="battle-modifier">Commander: +{log.defenderCommandBonus} bonus</div>
             )}
 
             <div className="battle-troops-summary">

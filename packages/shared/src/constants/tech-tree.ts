@@ -11,7 +11,7 @@ export interface TechDef {
 /** Number of techs required to unlock the next era. */
 export const ERA_THRESHOLDS: Record<TechEra, { required: number; total: number }> = {
   early:  { required: 3, total: 6 },
-  middle: { required: 3, total: 9 },
+  middle: { required: 3, total: 10 },
   late:   { required: 0, total: 12 }, // no next era in V1
 };
 
@@ -78,6 +78,10 @@ export const TECH_TREE: Record<TechId, TechDef> = {
   weapon_design: {
     era: 'middle', name: 'Weapon Design', prerequisites: ['military_academy'], researchCost: 40,
     unlocks: 'Create weapon variant designs (gold cost + development phase per design)',
+  },
+  chain_of_command: {
+    era: 'middle', name: 'Chain of Command', prerequisites: ['military_organisation'], researchCost: 40,
+    unlocks: 'Unlocks 2IC (second-in-command) slots for armies, units, fleets, and ships',
   },
 
   // ── Late Era (12) ──

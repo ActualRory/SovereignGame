@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
 
-export type TabId = 'country' | 'map' | 'economy' | 'trade' | 'tech' | 'military' | 'diplomacy';
+export type TabId = 'country' | 'map' | 'economy' | 'trade' | 'tech' | 'military' | 'nobles' | 'diplomacy';
 
 export interface MapContextMenu {
   x: number;

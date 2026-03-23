@@ -5,6 +5,7 @@ import { EconomyTab } from '../tabs/EconomyTab.js';
 import { TradeTab } from '../tabs/TradeTab.js';
 import { TechTab } from '../tabs/TechTab.js';
 import { MilitaryTab } from '../tabs/MilitaryTab.js';
+import { NoblesTab } from '../tabs/NoblesTab.js';
 import { DiplomacyTab } from '../tabs/DiplomacyTab.js';
 
 const TAB_COMPONENTS = {
@@ -14,6 +15,7 @@ const TAB_COMPONENTS = {
   trade: TradeTab,
   tech: TechTab,
   military: MilitaryTab,
+  nobles: NoblesTab,
   diplomacy: DiplomacyTab,
 } as const;
 

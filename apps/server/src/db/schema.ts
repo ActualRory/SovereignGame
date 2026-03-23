@@ -21,7 +21,15 @@ export const tradeTierEnum = pgEnum('trade_tier', ['open_trade', 'trade_route', 
 export const weaponDesignStatusEnum = pgEnum('weapon_design_status', ['developing', 'ready', 'retired']);
 export const equipmentOrderStatusEnum = pgEnum('equipment_order_status', ['active', 'fulfilled', 'cancelled']);
 export const equipmentOrderPriorityEnum = pgEnum('equipment_order_priority', ['relaxed', 'standard', 'rush']);
-export const officerRankEnum = pgEnum('officer_rank', ['major', 'colonel', 'general']);
+export const nobleBranchEnum = pgEnum('noble_branch', ['army', 'navy']);
+export const nobleRankEnum = pgEnum('noble_rank', [
+  'captain', 'major', 'colonel', 'brigadier', 'general',
+  'lieutenant', 'commander', 'captain_navy', 'commodore', 'admiral',
+]);
+export const nobleAssignmentTypeEnum = pgEnum('noble_assignment_type', [
+  'unassigned', 'army_ic', 'army_2ic', 'unit_ic', 'unit_2ic',
+  'ship_ic', 'ship_2ic', 'fleet_ic', 'fleet_2ic', 'governor',
+]);
 export const letterResponseEnum = pgEnum('letter_response', ['accepted', 'rejected']);
 export const loanStatusEnum = pgEnum('loan_status', ['active', 'delinquent', 'defaulted', 'repaid', 'forgiven']);
 
@@ -124,6 +132,10 @@ export const settlements = pgTable('settlements', {
   draftedDemigryphs: integer('drafted_demigryphs').notNull().default(0),
   /** Siege progress (0-100). Null = not under siege. */
   siegeProgress: integer('siege_progress'),
+  /** Noble assigned as governor. */
+  governorNobleId: uuid('governor_noble_id'),
+  /** Turn when the last noble was auto-generated from an estate at this settlement. */
+  lastNobleGeneratedTurn: integer('last_noble_generated_turn'),
 }, (table) => [
   index('settlements_game_idx').on(table.gameId),
 ]);
@@ -145,7 +157,8 @@ export const armies = pgTable('armies', {
   subtitle: text('subtitle'),
   hexQ: integer('hex_q').notNull(),
   hexR: integer('hex_r').notNull(),
-  generalId: uuid('general_id'),
+  commanderNobleId: uuid('commander_noble_id'),
+  secondInCommandNobleId: uuid('second_in_command_noble_id'),
   supplyBank: integer('supply_bank').notNull().default(100),
   movementPath: jsonb('movement_path').$type<unknown[] | null>(),
   isNaval: boolean('is_naval').notNull().default(false),
@@ -187,19 +200,61 @@ export const ships = pgTable('ships', {
   xp: integer('xp').notNull().default(0),
 });
 
-export const generals = pgTable('generals', {
+export const nobles = pgTable('nobles', {
   id: uuid('id').primaryKey().defaultRandom(),
   gameId: uuid('game_id').notNull().references(() => games.id),
   ownerId: uuid('owner_id').notNull().references(() => players.id),
   name: text('name').notNull(),
-  commandRating: integer('command_rating').notNull().default(2),
+  familyId: uuid('family_id'),
+  age: integer('age').notNull(),
+  birthTurn: integer('birth_turn').notNull(),
+  branch: nobleBranchEnum('branch').notNull(),
+  rank: nobleRankEnum('rank').notNull().default('captain'),
+  title: text('title'),
+  birthSettlementId: uuid('birth_settlement_id'),
+
+  // Stats (1-10)
+  martial: integer('martial').notNull(),
+  intelligence: integer('intelligence').notNull(),
+  cunning: integer('cunning').notNull(),
+
+  // Traits (0-5 per key)
+  traits: jsonb('traits').$type<{
+    infantry_commander: number; cavalry_commander: number; naval_commander: number;
+    administrator: number; fire: number; shock: number; maneuver: number;
+  }>().notNull().default({
+    infantry_commander: 0, cavalry_commander: 0, naval_commander: 0,
+    administrator: 0, fire: 0, shock: 0, maneuver: 0,
+  }),
+
+  // Progression
   xp: integer('xp').notNull().default(0),
-  isAdmiral: boolean('is_admiral').notNull().default(false),
-  /** Officer rank. Major+ can lead a unit; Colonel+ can command an army. */
-  rank: officerRankEnum('rank').notNull().default('major'),
-  /** Unit this officer is currently assigned to. Null = in officer pool. */
-  assignedUnitId: uuid('assigned_unit_id'),
-});
+  turnsInRank: integer('turns_in_rank').notNull().default(0),
+
+  // Assignment (denormalized)
+  assignmentType: nobleAssignmentTypeEnum('assignment_type').notNull().default('unassigned'),
+  assignedEntityId: uuid('assigned_entity_id'),
+  assignedSecondaryId: uuid('assigned_secondary_id'),
+
+  // Prisoner state
+  captorPlayerId: uuid('captor_player_id'),
+  isAlive: boolean('is_alive').notNull().default(true),
+
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('nobles_game_owner_idx').on(table.gameId, table.ownerId),
+  index('nobles_assignment_idx').on(table.assignmentType, table.assignedEntityId),
+]);
+
+export const nobleFamilies = pgTable('noble_families', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  gameId: uuid('game_id').notNull().references(() => games.id),
+  ownerId: uuid('owner_id').notNull().references(() => players.id),
+  surname: text('surname').notNull(),
+  reputation: integer('reputation').notNull().default(0),
+}, (table) => [
+  index('noble_families_game_idx').on(table.gameId, table.ownerId),
+]);
 
 export const unitTemplates = pgTable('unit_templates', {
   id: uuid('id').primaryKey().defaultRandom(),

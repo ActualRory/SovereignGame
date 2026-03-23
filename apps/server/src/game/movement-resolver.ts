@@ -9,6 +9,7 @@
 import {
   hexKey, hexNeighbors, hasRiverBetween, canEnterHex,
   resolveCombat, computeUnitStats,
+  computeArmyCombatBonus,
   TERRAIN, RIVER_CROSSING_COST,
   getDefaultPosition, MEN_PER_COMPANY, MEN_PER_SQUADRON,
   type CombatInput, type CombatUnitInput, type CombatResult,
@@ -16,6 +17,7 @@ import {
   type UnitTemplate, type WeaponDesign, type TroopCounts,
   type DiplomacyRelation,
   type MovementLog, type MovementStep, type MovementCombatEvent,
+  type Noble,
 } from '@kingdoms/shared';
 
 // ── Types ──
@@ -26,12 +28,8 @@ export interface ArmyForMovement {
   hexQ: number;
   hexR: number;
   movementPath: Array<{ q: number; r: number }> | null;
-  generalId: string | null;
-}
-
-export interface GeneralInfo {
-  id: string;
-  commandRating: number;
+  commanderNobleId: string | null;
+  secondInCommandNobleId: string | null;
 }
 
 export interface UnitForCombat {
@@ -100,8 +98,8 @@ export function resolveMovementStepByStep(opts: {
   armies: ArmyForMovement[];
   hexData: HexInfo[];
   relations: DiplomacyRelation[];
-  /** All generals in the game, keyed by ID */
-  generals: Map<string, GeneralInfo>;
+  /** All living nobles in the game, keyed by ID */
+  nobles: Map<string, Noble>;
   /** All non-destroyed units keyed by armyId */
   unitsByArmy: Map<string, UnitForCombat[]>;
   /** All unit templates for the game */
@@ -113,7 +111,7 @@ export function resolveMovementStepByStep(opts: {
 }): MovementResult {
   const {
     gameId, turnNumber, armies, hexData, relations,
-    generals, unitsByArmy, templates, weaponDesigns, playerNames,
+    nobles, unitsByArmy, templates, weaponDesigns, playerNames,
   } = opts;
 
   // Build lookup maps
@@ -281,7 +279,7 @@ export function resolveMovementStepByStep(opts: {
           const combatResult = resolveCombatBetween({
             gameId, turnNumber, hKey,
             atkArmyId, defArmyId,
-            armies, unitsByArmy, templates, weaponDesigns, generals,
+            armies, unitsByArmy, templates, weaponDesigns, nobles,
             hexTerrainMap,
           });
 
@@ -400,10 +398,10 @@ function resolveCombatBetween(opts: {
   unitsByArmy: Map<string, UnitForCombat[]>;
   templates: UnitTemplate[];
   weaponDesigns: WeaponDesign[];
-  generals: Map<string, GeneralInfo>;
+  nobles: Map<string, Noble>;
   hexTerrainMap: Map<string, TerrainType>;
 }): { result: CombatResult } | null {
-  const { gameId, turnNumber, hKey, atkArmyId, defArmyId, armies, unitsByArmy, templates, weaponDesigns, generals, hexTerrainMap } = opts;
+  const { gameId, turnNumber, hKey, atkArmyId, defArmyId, armies, unitsByArmy, templates, weaponDesigns, nobles, hexTerrainMap } = opts;
 
   const atkUnits = (unitsByArmy.get(atkArmyId) ?? []).filter(u => u.state !== 'destroyed');
   const defUnits = (unitsByArmy.get(defArmyId) ?? []).filter(u => u.state !== 'destroyed');
@@ -445,11 +443,18 @@ function resolveCombatBetween(opts: {
   const combatTerrain = (hexTerrainMap.get(hKey) ?? 'plains') as TerrainType;
   const combatSeed = hashSeed(`${gameId}:${turnNumber}:${atkArmyId}:${defArmyId}`);
 
-  // Look up generals via armies
+  // Look up noble commanders via armies
   const atkArmy = armies.find(a => a.id === atkArmyId);
   const defArmy = armies.find(a => a.id === defArmyId);
-  const atkGeneral = atkArmy?.generalId ? generals.get(atkArmy.generalId) : null;
-  const defGeneral = defArmy?.generalId ? generals.get(defArmy.generalId) : null;
+  const atkIc = atkArmy?.commanderNobleId ? (nobles.get(atkArmy.commanderNobleId) ?? null) : null;
+  const atk2ic = atkArmy?.secondInCommandNobleId ? (nobles.get(atkArmy.secondInCommandNobleId) ?? null) : null;
+  const defIc = defArmy?.commanderNobleId ? (nobles.get(defArmy.commanderNobleId) ?? null) : null;
+  const def2ic = defArmy?.secondInCommandNobleId ? (nobles.get(defArmy.secondInCommandNobleId) ?? null) : null;
+
+  // TODO: check per-player tech for chain_of_command
+  const hasChainOfCommand = false;
+  const atkBonus = computeArmyCombatBonus(atkIc as any, atk2ic as any, hasChainOfCommand);
+  const defBonus = computeArmyCombatBonus(defIc as any, def2ic as any, hasChainOfCommand);
 
   const combatInput: CombatInput = {
     id: `combat-${turnNumber}-${atkArmyId}-${defArmyId}`,
@@ -458,12 +463,12 @@ function resolveCombatBetween(opts: {
     riverCrossing: false,
     attacker: {
       armyId: atkArmyId,
-      commandRating: atkGeneral?.commandRating ?? 0,
+      nobleBonus: atkBonus,
       units: atkCombatUnits,
     },
     defender: {
       armyId: defArmyId,
-      commandRating: defGeneral?.commandRating ?? 0,
+      nobleBonus: defBonus,
       units: defCombatUnits,
     },
   };

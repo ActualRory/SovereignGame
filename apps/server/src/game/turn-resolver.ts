@@ -35,6 +35,27 @@ import {
   UNILATERAL_ATTACHMENTS, type LetterAttachment,
 } from '@kingdoms/shared';
 import { processAttachmentEffect } from './attachment-effects.js';
+import type { NobleRank } from '@kingdoms/shared';
+import {
+  NOBLE_HIRE_COST, PROMOTION_REQUIREMENTS, CUNNING_COST_REDUCTION_PER_POINT,
+  RANK_DISPLAY_NAMES, getNextRank, NOBLES_PER_ESTATE, NOBLE_GENERATION_DELAY_TURNS,
+  MINOR_TURNS_PER_YEAR, NOBLE_DEATH_AGE_START, NOBLE_DEATH_CHANCE_BASE,
+  NOBLE_DEATH_CHANCE_PER_YEAR, NOBLE_CAPTURE_CHANCE, NOBLE_BATTLE_DEATH_CHANCE,
+  GOVERNOR_BONUS_PER_RANK,
+} from '@kingdoms/shared';
+import { generateNobleName, generateNobleAge, generateNobleStat } from '@kingdoms/shared';
+import { computeArmyCombatBonus, computeUnitSpecialtyBonus } from '@kingdoms/shared';
+
+// Seeded PRNG for noble generation (same algo as combat engine)
+function mulberry32(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 export interface TurnResult {
   events: EventEntry[];
@@ -1276,44 +1297,198 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   }
 
   // ══════════════════════════════════════════════
-  // STEP 6c: Hire Generals & Create Armies
+  // STEP 6c: Noble Orders & Create Armies
   // ══════════════════════════════════════════════
   for (const player of activePlayers) {
     const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
 
-    // Hire generals
-    for (const hireOrder of (orders.hireGenerals ?? [])) {
-      const [settlement] = await db.select().from(schema.settlements)
-        .where(eq(schema.settlements.id, hireOrder.settlementId));
-      if (!settlement || settlement.ownerId !== player.id) continue;
-
-      // General costs 1000 gold
-      const generalCost = 1000;
+    // Process noble orders
+    for (const nobleOrder of (orders.nobleOrders ?? [])) {
       const playerRow = updatedPlayers.find(p => p.id === player.id);
-      if (!playerRow || playerRow.gold < generalCost) continue;
+      if (!playerRow) continue;
 
-      await db.update(schema.players)
-        .set({ gold: playerRow.gold - generalCost })
-        .where(eq(schema.players.id, player.id));
+      if (nobleOrder.type === 'hire_noble') {
+        const [settlement] = await db.select().from(schema.settlements)
+          .where(eq(schema.settlements.id, nobleOrder.settlementId));
+        if (!settlement || settlement.ownerId !== player.id) continue;
 
-      await db.insert(schema.generals).values({
-        gameId,
-        ownerId: player.id,
-        name: hireOrder.name || `General ${player.countryName}`,
-        commandRating: 2,
-        isAdmiral: hireOrder.isAdmiral ?? false,
-      });
+        // Requires military_academy building at settlement
+        const settlementBuildings = await db.select().from(schema.buildings)
+          .where(and(eq(schema.buildings.settlementId, settlement.id), eq(schema.buildings.isConstructing, false)));
+        if (!settlementBuildings.some(b => b.type === 'military_academy')) continue;
 
-      events.push({
-        type: 'general_hired',
-        description: `${player.countryName} hired general ${hireOrder.name}`,
-        playerIds: [player.id],
-      });
+        if (playerRow.gold < NOBLE_HIRE_COST) continue;
+
+        await db.update(schema.players)
+          .set({ gold: playerRow.gold - NOBLE_HIRE_COST })
+          .where(eq(schema.players.id, player.id));
+        playerRow.gold -= NOBLE_HIRE_COST;
+
+        // Generate noble stats and name
+        const nameRng = mulberry32(Date.now() ^ parseInt(player.id.slice(0, 8), 16));
+        const { firstName, surname } = generateNobleName(nameRng);
+        const nobleName = nobleOrder.name || `${firstName} ${surname}`;
+        const age = generateNobleAge(nameRng);
+        const martial = generateNobleStat(nameRng);
+        const intelligence = generateNobleStat(nameRng);
+        const cunning = generateNobleStat(nameRng);
+
+        // Find or create family
+        let familyId: string | null = null;
+        const existingFamily = await db.select().from(schema.nobleFamilies)
+          .where(and(
+            eq(schema.nobleFamilies.gameId, gameId),
+            eq(schema.nobleFamilies.ownerId, player.id),
+            eq(schema.nobleFamilies.surname, surname),
+          ));
+        if (existingFamily.length > 0) {
+          familyId = existingFamily[0].id;
+        } else {
+          const [newFamily] = await db.insert(schema.nobleFamilies).values({
+            gameId,
+            ownerId: player.id,
+            surname,
+          }).returning();
+          familyId = newFamily.id;
+        }
+
+        const startRank = nobleOrder.branch === 'army' ? 'captain' : 'lieutenant';
+        await db.insert(schema.nobles).values({
+          gameId,
+          ownerId: player.id,
+          name: nobleName,
+          familyId,
+          age,
+          birthTurn: currentTurn,
+          branch: nobleOrder.branch,
+          rank: startRank,
+          birthSettlementId: settlement.id,
+          martial,
+          intelligence,
+          cunning,
+        });
+
+        events.push({
+          type: 'noble_hired',
+          description: `${player.countryName} hired ${nobleName}`,
+          playerIds: [player.id],
+        });
+      } else if (nobleOrder.type === 'promote_noble') {
+        const [noble] = await db.select().from(schema.nobles)
+          .where(and(eq(schema.nobles.id, nobleOrder.nobleId), eq(schema.nobles.ownerId, player.id)));
+        if (!noble || !noble.isAlive) continue;
+
+        const nextRank = getNextRank(noble.rank as any, noble.branch as any);
+        if (!nextRank) continue;
+
+        const req = PROMOTION_REQUIREMENTS[noble.rank as NobleRank];
+        if (!req) continue;
+        if (noble.xp < req.minXp || noble.turnsInRank < req.minTurnsInRank) continue;
+
+        const costReduction = 1 - (noble.cunning * CUNNING_COST_REDUCTION_PER_POINT);
+        const goldCost = Math.floor(req.baseGoldCost * Math.max(0.5, costReduction));
+        if (playerRow.gold < goldCost) continue;
+
+        await db.update(schema.players)
+          .set({ gold: playerRow.gold - goldCost })
+          .where(eq(schema.players.id, player.id));
+        playerRow.gold -= goldCost;
+
+        await db.update(schema.nobles)
+          .set({ rank: nextRank, turnsInRank: 0 })
+          .where(eq(schema.nobles.id, noble.id));
+
+        events.push({
+          type: 'noble_promoted',
+          description: `${noble.name} promoted to ${RANK_DISPLAY_NAMES[nextRank as NobleRank]}`,
+          playerIds: [player.id],
+        });
+      } else if (nobleOrder.type === 'assign_noble') {
+        const [noble] = await db.select().from(schema.nobles)
+          .where(and(eq(schema.nobles.id, nobleOrder.nobleId), eq(schema.nobles.ownerId, player.id)));
+        if (!noble || !noble.isAlive || noble.captorPlayerId) continue;
+
+        await db.update(schema.nobles)
+          .set({
+            assignmentType: nobleOrder.assignmentType,
+            assignedEntityId: nobleOrder.entityId,
+            assignedSecondaryId: nobleOrder.secondaryId ?? null,
+          })
+          .where(eq(schema.nobles.id, noble.id));
+
+        // Update denormalized FKs on armies/settlements
+        if (nobleOrder.assignmentType === 'army_ic') {
+          await db.update(schema.armies)
+            .set({ commanderNobleId: noble.id })
+            .where(eq(schema.armies.id, nobleOrder.entityId));
+        } else if (nobleOrder.assignmentType === 'army_2ic') {
+          await db.update(schema.armies)
+            .set({ secondInCommandNobleId: noble.id })
+            .where(eq(schema.armies.id, nobleOrder.entityId));
+        } else if (nobleOrder.assignmentType === 'governor') {
+          await db.update(schema.settlements)
+            .set({ governorNobleId: noble.id })
+            .where(eq(schema.settlements.id, nobleOrder.entityId));
+        }
+      } else if (nobleOrder.type === 'unassign_noble') {
+        const [noble] = await db.select().from(schema.nobles)
+          .where(and(eq(schema.nobles.id, nobleOrder.nobleId), eq(schema.nobles.ownerId, player.id)));
+        if (!noble) continue;
+
+        // Clear denormalized FKs
+        if (noble.assignmentType === 'army_ic' && noble.assignedEntityId) {
+          await db.update(schema.armies)
+            .set({ commanderNobleId: null })
+            .where(eq(schema.armies.id, noble.assignedEntityId));
+        } else if (noble.assignmentType === 'army_2ic' && noble.assignedEntityId) {
+          await db.update(schema.armies)
+            .set({ secondInCommandNobleId: null })
+            .where(eq(schema.armies.id, noble.assignedEntityId));
+        } else if (noble.assignmentType === 'governor' && noble.assignedEntityId) {
+          await db.update(schema.settlements)
+            .set({ governorNobleId: null })
+            .where(eq(schema.settlements.id, noble.assignedEntityId));
+        }
+
+        await db.update(schema.nobles)
+          .set({ assignmentType: 'unassigned', assignedEntityId: null, assignedSecondaryId: null })
+          .where(eq(schema.nobles.id, noble.id));
+      } else if (nobleOrder.type === 'rename_noble') {
+        await db.update(schema.nobles)
+          .set({ name: nobleOrder.name })
+          .where(and(eq(schema.nobles.id, nobleOrder.nobleId), eq(schema.nobles.ownerId, player.id)));
+      } else if (nobleOrder.type === 'set_title') {
+        await db.update(schema.nobles)
+          .set({ title: nobleOrder.title })
+          .where(and(eq(schema.nobles.id, nobleOrder.nobleId), eq(schema.nobles.ownerId, player.id)));
+      } else if (nobleOrder.type === 'ransom_offer') {
+        // Store ransom offer (simplified: as a notification to the prisoner's owner)
+        const [noble] = await db.select().from(schema.nobles)
+          .where(and(eq(schema.nobles.id, nobleOrder.nobleId), eq(schema.nobles.captorPlayerId, player.id)));
+        if (!noble) continue;
+        events.push({
+          type: 'ransom_offered',
+          description: `${player.countryName} demands ${nobleOrder.goldAmount} gold for ${noble.name}`,
+          playerIds: [noble.ownerId],
+          data: { nobleId: noble.id, goldAmount: nobleOrder.goldAmount, captorId: player.id },
+        });
+      } else if (nobleOrder.type === 'release_noble') {
+        const [noble] = await db.select().from(schema.nobles)
+          .where(and(eq(schema.nobles.id, nobleOrder.nobleId), eq(schema.nobles.captorPlayerId, player.id)));
+        if (!noble) continue;
+        await db.update(schema.nobles)
+          .set({ captorPlayerId: null })
+          .where(eq(schema.nobles.id, noble.id));
+        events.push({
+          type: 'noble_released',
+          description: `${noble.name} has been released`,
+          playerIds: [noble.ownerId, player.id],
+        });
+      }
     }
 
     // Create new armies
     for (const armyOrder of (orders.createArmies ?? [])) {
-      // Must be on an owned hex
       const targetHex = allHexes.find(
         h => h.q === armyOrder.hexQ && h.r === armyOrder.hexR && h.ownerId === player.id
       );
@@ -1472,9 +1647,9 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   const allDiplomacyRelations = await db.select().from(schema.diplomacyRelations)
     .where(eq(schema.diplomacyRelations.gameId, gameId));
 
-  const allGenerals = await db.select().from(schema.generals)
-    .where(eq(schema.generals.gameId, gameId));
-  const generalsMap = new Map(allGenerals.map(g => [g.id, { id: g.id, commandRating: g.commandRating }]));
+  const allNobles = await db.select().from(schema.nobles)
+    .where(and(eq(schema.nobles.gameId, gameId), eq(schema.nobles.isAlive, true)));
+  const noblesById = new Map(allNobles.map(n => [n.id, n]));
 
   const armyIds = allMovementArmies.map(a => a.id);
   const allUnits = armyIds.length > 0
@@ -1506,7 +1681,8 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       hexQ: a.hexQ,
       hexR: a.hexR,
       movementPath: a.movementPath as Array<{ q: number; r: number }> | null,
-      generalId: a.generalId,
+      commanderNobleId: a.commanderNobleId,
+      secondInCommandNobleId: a.secondInCommandNobleId,
     })),
     hexData: hexDataForMovement.map(h => ({
       q: h.q,
@@ -1525,7 +1701,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       terms: r.terms as any,
       startedTurn: r.startedTurn,
     })),
-    generals: generalsMap,
+    nobles: noblesById as any,
     unitsByArmy: unitsByArmy as any,
     templates: allTemplates as any,
     weaponDesigns: allWeaponDesigns as any,
@@ -1723,13 +1899,12 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         defenderUnits = defenderUnits.filter(u => u.state !== 'destroyed');
       }
 
-      // Load generals
-      const [atkGeneral] = army.generalId
-        ? await db.select().from(schema.generals).where(eq(schema.generals.id, army.generalId))
-        : [null];
-      const [defGeneral] = defArmy?.generalId
-        ? await db.select().from(schema.generals).where(eq(schema.generals.id, defArmy.generalId))
-        : [null];
+      // Load noble commanders for siege
+      const atkIcNoble = army.commanderNobleId ? noblesById.get(army.commanderNobleId) ?? null : null;
+      const atk2icNoble = army.secondInCommandNobleId ? noblesById.get(army.secondInCommandNobleId) ?? null : null;
+      const defIcNoble = defArmy?.commanderNobleId ? noblesById.get(defArmy.commanderNobleId) ?? null : null;
+      const def2icNoble = defArmy?.secondInCommandNobleId ? noblesById.get(defArmy.secondInCommandNobleId) ?? null : null;
+      const siegeHasChainOfCommand = false; // TODO: check per-player tech
 
       const combatHex = hexDataForMovement.find(
         h => h.q === siege.targetHexQ && h.r === siege.targetHexR
@@ -1773,6 +1948,9 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       const atkCombatUnits = activeAtkUnits.map(buildSiegeCombatUnit).filter((u): u is CombatUnitInput => u !== null);
       const defCombatUnits = defenderUnits.map(buildSiegeCombatUnit).filter((u): u is CombatUnitInput => u !== null);
 
+      const siegeAtkBonus = computeArmyCombatBonus(atkIcNoble as any, atk2icNoble as any, siegeHasChainOfCommand);
+      const siegeDefBonus = computeArmyCombatBonus(defIcNoble as any, def2icNoble as any, siegeHasChainOfCommand);
+
       const siegeInput: CombatInput = {
         id: `siege-${turnNumber}-${army.id}`,
         seed: siegeSeed,
@@ -1780,12 +1958,12 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         riverCrossing: false,
         attacker: {
           armyId: army.id,
-          commandRating: atkGeneral?.commandRating ?? 0,
+          nobleBonus: siegeAtkBonus,
           units: atkCombatUnits,
         },
         defender: {
           armyId: defArmy?.id ?? 'garrison',
-          commandRating: defGeneral?.commandRating ?? 0,
+          nobleBonus: siegeDefBonus,
           units: defCombatUnits,
         },
       };
@@ -2085,6 +2263,129 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   }
 
   // ══════════════════════════════════════════════
+  // STEP 15b: Noble Lifecycle (Aging, Death, Estate Generation)
+  // ══════════════════════════════════════════════
+  {
+    // Increment turnsInRank for all living nobles
+    await db.update(schema.nobles)
+      .set({ turnsInRank: db.raw`turns_in_rank + 1` as any })
+      .where(and(eq(schema.nobles.gameId, gameId), eq(schema.nobles.isAlive, true)));
+
+    // Aging: every MINOR_TURNS_PER_YEAR turns (once per year), increment age
+    if (currentTurn % MINOR_TURNS_PER_YEAR === 0) {
+      const livingNobles = await db.select().from(schema.nobles)
+        .where(and(eq(schema.nobles.gameId, gameId), eq(schema.nobles.isAlive, true)));
+
+      for (const noble of livingNobles) {
+        const newAge = noble.age + 1;
+        // Natural death check for nobles aged 60+
+        if (newAge >= NOBLE_DEATH_AGE_START) {
+          const deathChance = NOBLE_DEATH_CHANCE_BASE + NOBLE_DEATH_CHANCE_PER_YEAR * (newAge - NOBLE_DEATH_AGE_START);
+          if (Math.random() < deathChance) {
+            // Noble dies of old age — clear assignments
+            if (noble.assignmentType === 'army_ic' && noble.assignedEntityId) {
+              await db.update(schema.armies).set({ commanderNobleId: null }).where(eq(schema.armies.id, noble.assignedEntityId));
+            } else if (noble.assignmentType === 'army_2ic' && noble.assignedEntityId) {
+              await db.update(schema.armies).set({ secondInCommandNobleId: null }).where(eq(schema.armies.id, noble.assignedEntityId));
+            } else if (noble.assignmentType === 'governor' && noble.assignedEntityId) {
+              await db.update(schema.settlements).set({ governorNobleId: null }).where(eq(schema.settlements.id, noble.assignedEntityId));
+            }
+            await db.update(schema.nobles).set({ isAlive: false, age: newAge }).where(eq(schema.nobles.id, noble.id));
+            events.push({
+              type: 'noble_died',
+              description: `${noble.name} has passed away at the age of ${newAge}`,
+              playerIds: [noble.ownerId],
+            });
+            continue;
+          }
+        }
+        await db.update(schema.nobles).set({ age: newAge }).where(eq(schema.nobles.id, noble.id));
+      }
+    }
+
+    // Estate generation: for each settlement, check if below noble cap
+    const allSettlements = await db.select().from(schema.settlements)
+      .where(eq(schema.settlements.gameId, gameId));
+
+    for (const settlement of allSettlements) {
+      const settlementBuildings = await db.select().from(schema.buildings)
+        .where(and(eq(schema.buildings.settlementId, settlement.id), eq(schema.buildings.isConstructing, false)));
+
+      const estateCount = settlementBuildings.filter(b => b.type === 'estate').length;
+      if (estateCount === 0) continue;
+
+      const nobleCap = estateCount * NOBLES_PER_ESTATE;
+      const lastGen = settlement.lastNobleGeneratedTurn ?? 0;
+      if (currentTurn - lastGen < NOBLE_GENERATION_DELAY_TURNS) continue;
+
+      // Count living nobles born at this settlement
+      const noblesHere = await db.select().from(schema.nobles)
+        .where(and(
+          eq(schema.nobles.gameId, gameId),
+          eq(schema.nobles.ownerId, settlement.ownerId),
+          eq(schema.nobles.birthSettlementId, settlement.id),
+          eq(schema.nobles.isAlive, true),
+        ));
+
+      if (noblesHere.length >= nobleCap) continue;
+
+      // Auto-generate a noble
+      const genRng = mulberry32(currentTurn ^ parseInt(settlement.id.slice(0, 8), 16));
+      const { firstName, surname } = generateNobleName(genRng);
+      const age = generateNobleAge(genRng);
+      const martial = generateNobleStat(genRng);
+      const intelligence = generateNobleStat(genRng);
+      const cunning = generateNobleStat(genRng);
+      const branch = genRng() < 0.5 ? 'army' : 'navy';
+      const startRank = branch === 'army' ? 'captain' : 'lieutenant';
+
+      // Find or create family
+      let familyId: string | null = null;
+      const existingFamily = await db.select().from(schema.nobleFamilies)
+        .where(and(
+          eq(schema.nobleFamilies.gameId, gameId),
+          eq(schema.nobleFamilies.ownerId, settlement.ownerId),
+          eq(schema.nobleFamilies.surname, surname),
+        ));
+      if (existingFamily.length > 0) {
+        familyId = existingFamily[0].id;
+      } else {
+        const [newFamily] = await db.insert(schema.nobleFamilies).values({
+          gameId,
+          ownerId: settlement.ownerId,
+          surname,
+        }).returning();
+        familyId = newFamily.id;
+      }
+
+      await db.insert(schema.nobles).values({
+        gameId,
+        ownerId: settlement.ownerId,
+        name: `${firstName} ${surname}`,
+        familyId,
+        age,
+        birthTurn: currentTurn,
+        branch: branch as any,
+        rank: startRank,
+        birthSettlementId: settlement.id,
+        martial,
+        intelligence,
+        cunning,
+      });
+
+      await db.update(schema.settlements)
+        .set({ lastNobleGeneratedTurn: currentTurn })
+        .where(eq(schema.settlements.id, settlement.id));
+
+      events.push({
+        type: 'noble_born',
+        description: `A new noble, ${firstName} ${surname}, has emerged in ${settlement.name}`,
+        playerIds: [settlement.ownerId],
+      });
+    }
+  }
+
+  // ══════════════════════════════════════════════
   // STEP 16: Late Winter Seasonal d20 Roll
   // ══════════════════════════════════════════════
   if (season === 'late_winter') {
@@ -2195,19 +2496,23 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
           }
 
           case 'noble_defection': {
-            // A general defects (removed)
-            const generals = await db.select().from(schema.generals)
-              .where(and(eq(schema.generals.gameId, gameId), eq(schema.generals.ownerId, player.id)));
-            if (generals.length > 0) {
-              const target = generals[Math.floor(Math.random() * generals.length)];
-              // Remove general from any army
-              await db.update(schema.armies)
-                .set({ generalId: null })
-                .where(eq(schema.armies.generalId, target.id));
-              await db.delete(schema.generals).where(eq(schema.generals.id, target.id));
+            // A noble defects
+            const playerNobles = await db.select().from(schema.nobles)
+              .where(and(eq(schema.nobles.gameId, gameId), eq(schema.nobles.ownerId, player.id), eq(schema.nobles.isAlive, true)));
+            if (playerNobles.length > 0) {
+              const target = playerNobles[Math.floor(Math.random() * playerNobles.length)];
+              // Clear assignments
+              if (target.assignmentType === 'army_ic' && target.assignedEntityId) {
+                await db.update(schema.armies).set({ commanderNobleId: null }).where(eq(schema.armies.id, target.assignedEntityId));
+              } else if (target.assignmentType === 'army_2ic' && target.assignedEntityId) {
+                await db.update(schema.armies).set({ secondInCommandNobleId: null }).where(eq(schema.armies.id, target.assignedEntityId));
+              } else if (target.assignmentType === 'governor' && target.assignedEntityId) {
+                await db.update(schema.settlements).set({ governorNobleId: null }).where(eq(schema.settlements.id, target.assignedEntityId));
+              }
+              await db.update(schema.nobles).set({ isAlive: false }).where(eq(schema.nobles.id, target.id));
               events.push({
                 type: 'noble_defection',
-                description: `General ${target.name} has defected from ${player.countryName}!`,
+                description: `${target.name} has defected from ${player.countryName}!`,
                 playerIds: [player.id],
               });
             }

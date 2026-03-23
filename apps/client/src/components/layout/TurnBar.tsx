@@ -45,7 +45,7 @@ export function TurnBar() {
         techResearch: pendingOrders.techResearch,
         recruitments: pendingOrders.recruitments,
         movements: pendingOrders.movements,
-        hireGenerals: pendingOrders.hireGenerals,
+        nobleOrders: pendingOrders.nobleOrders,
         createArmies: pendingOrders.createArmies,
         newSettlements: pendingOrders.newSettlements,
         siegeAssaults: pendingOrders.siegeAssaults,
@@ -67,8 +67,6 @@ export function TurnBar() {
         disbandUnits: pendingOrders.disbandUnits,
         upgradeUnits: pendingOrders.upgradeUnits,
         replenishments: pendingOrders.replenishments,
-        assignOfficers: pendingOrders.assignOfficers,
-        unassignOfficers: pendingOrders.unassignOfficers,
       };
 
       const res = await fetch(`/api/games/${slug}/orders`, {

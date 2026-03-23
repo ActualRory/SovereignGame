@@ -5,6 +5,7 @@ import type { TaxRate } from './economy.js';
 import type { TechId } from './tech.js';
 import type { BuildingType } from './building.js';
 import type { ShipType, UnitPosition } from './military.js';
+import type { NobleBranch, NobleAssignmentType } from './noble.js';
 import type { WeaponType } from '../constants/weapons.js';
 import type { ShieldType } from '../constants/shields.js';
 import type { ArmourType } from '../constants/armour.js';
@@ -52,10 +53,8 @@ export interface TurnOrders {
   siegeAssaults: SiegeAssaultOrder[];
   unitReassignments: UnitReassignmentOrder[];
 
-  // Officers
-  hireGenerals: HireGeneralOrder[];
-  assignOfficers: AssignOfficerOrder[];
-  unassignOfficers: UnassignOfficerOrder[];
+  // Nobles
+  nobleOrders: NobleOrder[];
   createArmies: CreateArmyOrder[];
 
   // Diplomacy
@@ -221,22 +220,19 @@ export interface UnitReassignmentOrder {
   newPosition?: UnitPosition;
 }
 
-// ── Officers ──
+// ── Nobles ──
 
-export interface HireGeneralOrder {
-  settlementId: string;
-  name: string;
-  isAdmiral: boolean;
-}
-
-export interface AssignOfficerOrder {
-  officerId: string;
-  unitId: string;
-}
-
-export interface UnassignOfficerOrder {
-  officerId: string;
-}
+export type NobleOrder =
+  | { type: 'hire_noble'; settlementId: string; name?: string; branch: NobleBranch }
+  | { type: 'promote_noble'; nobleId: string }
+  | { type: 'rename_noble'; nobleId: string; name: string }
+  | { type: 'set_title'; nobleId: string; title: string }
+  | { type: 'assign_noble'; nobleId: string; assignmentType: NobleAssignmentType; entityId: string; secondaryId?: string }
+  | { type: 'unassign_noble'; nobleId: string }
+  | { type: 'ransom_offer'; nobleId: string; goldAmount: number }
+  | { type: 'ransom_accept'; nobleId: string }
+  | { type: 'ransom_reject'; nobleId: string }
+  | { type: 'release_noble'; nobleId: string };
 
 // ── Other ──
 
@@ -284,9 +280,7 @@ export function emptyOrders(currentTaxRate: TaxRate): TurnOrders {
     movements: [],
     siegeAssaults: [],
     unitReassignments: [],
-    hireGenerals: [],
-    assignOfficers: [],
-    unassignOfficers: [],
+    nobleOrders: [],
     createArmies: [],
     lettersSent: [],
     tradeProposals: [],

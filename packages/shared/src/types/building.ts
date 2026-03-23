@@ -16,7 +16,7 @@ export type BuildingType =
   | 'foundry' | 'alchemist' | 'bank' | 'tailor' | 'tannery'
   | 'arms_workshop' | 'armour_workshop'
   // Civic
-  | 'library' | 'academy' | 'college' | 'university' | 'port'
+  | 'library' | 'academy' | 'college' | 'university' | 'port' | 'estate'
   // Military
   | 'barracks' | 'drafting_centre' | 'military_academy' | 'staff_college'
   // Fortification

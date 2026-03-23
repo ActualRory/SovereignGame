@@ -6,14 +6,8 @@ export const DICE_SIDES = 20;
 /** Maximum combat rounds before forced draw. */
 export const MAX_COMBAT_ROUNDS = 12;
 
-/** Command rating bonus: +1 to each die roll per point of command. */
-export const COMMAND_BONUS_PER_POINT = 1;
-
 /** Maneuver Warfare tech: +2 frontline width everywhere. */
 export const MANEUVER_WARFARE_WIDTH_BONUS = 2;
-
-/** General's Command rating adds +1 width per 2 points. */
-export const COMMAND_WIDTH_PER_2_POINTS = 1;
 
 /** Modern Doctrine tech: +1 to all combat rolls. */
 export const MODERN_DOCTRINE_BONUS = 1;

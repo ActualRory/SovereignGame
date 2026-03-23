@@ -1089,12 +1089,12 @@ function ArmyCard({ slug, army, templates, weaponDesigns, pendingOrders, onCance
   const [subtitleValue, setSubtitleValue] = useState(army.subtitle ?? '');
   const setGameState = useStore(s => s.setGameState);
   const armies = useStore(s => s.armies);
-  const generals = useStore(s => (s as any).generals) as any[] | undefined;
+  const nobles = useStore(s => s.nobles) as any[] | undefined;
 
   const units = (army.units as any[] | undefined) ?? [];
   const activeUnits = units.filter((u: any) => u.state !== 'destroyed');
   const hasPendingMove = pendingOrders.movements.some((m: any) => m.armyId === army.id);
-  const general = generals?.find((g: any) => g.id === army.generalId);
+  const commander = nobles?.find((n: any) => n.id === army.commanderNobleId);
 
   async function saveArmyField(field: 'name' | 'subtitle', value: string) {
     const sessionToken = localStorage.getItem(`session:${slug}`);
@@ -1143,22 +1143,22 @@ function ArmyCard({ slug, army, templates, weaponDesigns, pendingOrders, onCance
         <div className="army-card-meta">
           <span className="army-card-count">{activeUnits.length} units</span>
           {hasPendingMove && <span className="army-card-badge army-badge-moving">Moving</span>}
-          {!army.generalId && <span className="army-card-badge army-badge-warning">No General</span>}
+          {!army.commanderNobleId && <span className="army-card-badge army-badge-warning">No Commander</span>}
           <span className="army-card-coord">({army.hexQ}, {army.hexR})</span>
         </div>
       </div>
 
       {expanded && (
         <div className="army-unit-roster">
-          {general ? (
+          {commander ? (
             <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8, padding: '6px 8px', background: 'var(--bg-inset)', borderRadius: 4, border: '1px solid var(--border-color)' }}>
-              <span style={{ color: 'var(--accent-gold)' }}>General {general.name}</span>
-              <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>Command: {general.commandRating}</span>
-              <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>XP: {general.xp ?? 0}</span>
+              <span style={{ color: 'var(--accent-gold)' }}>{fmt(commander.rank)} {commander.name}</span>
+              <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>M:{commander.martial} I:{commander.intelligence} C:{commander.cunning}</span>
+              <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>XP: {commander.xp ?? 0}</span>
             </div>
           ) : (
             <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: 6 }}>
-              No general assigned — no command bonus in battle.
+              No commander assigned — no command bonus in battle.
             </div>
           )}
           {activeUnits.length === 0 && <p className="army-empty-roster">This army has no active units.</p>}
@@ -1425,12 +1425,12 @@ function UnitTOE({ unit, tmpl, weaponDesigns, stats, troopCounts, maxTroops, tot
   setSubtitleValue: (v: string) => void;
   saveUnitField: (field: 'name' | 'subtitle', value: string) => void;
 }) {
-  const generals = useStore(s => (s as any).generals) as any[] | undefined;
+  const nobles = useStore(s => s.nobles) as any[] | undefined;
   const held: { primary: number; secondary: number; sidearm: number; armour: number; mounts: number } =
     unit.heldEquipment ?? { primary: 0, secondary: 0, sidearm: 0, armour: 0, mounts: 0 };
 
   // Find officer assigned to this unit
-  const officer = generals?.find((g: any) => g.assignedUnitId === unit.id);
+  const officer = nobles?.find((n: any) => n.assignmentType === 'unit_ic' && n.assignedEntityId === unit.id);
 
   // Build equipment rows: [label, held, required, slot icon]
   const equipRows: Array<{ label: string; held: number; required: number; icon: string }> = [];
@@ -1567,7 +1567,7 @@ function UnitTOE({ unit, tmpl, weaponDesigns, stats, troopCounts, maxTroops, tot
         <span>XP: {unit.xp ?? 0}</span>
         {officer && (
           <span style={{ color: 'var(--accent-gold)' }}>
-            {fmt(officer.rank ?? 'major')}. {officer.name} (Cmd: {officer.commandRating})
+            {fmt(officer.rank)} {officer.name} (M:{officer.martial})
           </span>
         )}
       </div>
@@ -1590,7 +1590,7 @@ function OrbatTab({ armies, templates, weaponDesigns }: {
   templates: UnitTemplate[];
   weaponDesigns: WeaponDesign[];
 }) {
-  const generals = useStore(s => (s as any).generals) as any[] | undefined;
+  const nobles = useStore(s => s.nobles) as any[] | undefined;
   const player = useStore(s => s.player) as Record<string, unknown> | null;
   const [expandedUnits, setExpandedUnits] = useState<Set<string>>(new Set());
 
@@ -1639,7 +1639,7 @@ function OrbatTab({ armies, templates, weaponDesigns }: {
       <div className="orbat-army-row">
         {armies.map((army: any, armyIdx: number) => {
           const units = ((army.units ?? []) as any[]).filter((u: any) => u.state !== 'destroyed');
-          const general = generals?.find((g: any) => g.id === army.generalId);
+          const commander = nobles?.find((n: any) => n.id === army.commanderNobleId);
           const armyTotal = units.reduce((sum: number, u: any) => {
             const tc: TroopCounts = u.troopCounts ?? { rookie: 0, capable: 0, veteran: 0 };
             return sum + tc.rookie + tc.capable + tc.veteran;
@@ -1653,9 +1653,9 @@ function OrbatTab({ armies, templates, weaponDesigns }: {
                   {army.isNaval ? '⚓' : '⚔'}
                 </div>
                 <div className="orbat-node-name">{army.name}</div>
-                {general && (
+                {commander && (
                   <div className="orbat-node-general">
-                    {fmt(general.rank ?? 'general')}. {general.name} ({general.commandRating})
+                    {fmt(commander.rank)} {commander.name}
                   </div>
                 )}
                 <div className="orbat-node-meta">

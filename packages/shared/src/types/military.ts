@@ -160,24 +160,6 @@ export interface Ship {
   xp: number;
 }
 
-// ── Officer / General ──
-
-export type OfficerRank = 'major' | 'colonel' | 'general';
-
-export interface General {
-  id: string;
-  gameId: string;
-  ownerId: string;
-  name: string;
-  commandRating: number; // 1-10
-  xp: number;
-  isAdmiral: boolean;
-  /** Rank determines eligibility: Major+ can be assigned to a unit; Colonel+ to an army. */
-  rank: OfficerRank;
-  /** Unit this officer is assigned to. Null = in officer pool (unassigned). */
-  assignedUnitId: string | null;
-}
-
 // ── Army ──
 
 export interface Army {
@@ -187,7 +169,10 @@ export interface Army {
   name: string;
   hexQ: number;
   hexR: number;
-  generalId: string | null;
+  /** Noble assigned as army IC (In Command). Null = no commander. */
+  commanderNobleId: string | null;
+  /** Noble assigned as army 2IC (Second in Command). Requires Chain of Command tech. */
+  secondInCommandNobleId: string | null;
   supplyBank: number;
   movementPath: HexCoord[] | null;
   isNaval: boolean;
@@ -201,7 +186,10 @@ export interface Fleet {
   name: string;
   hexQ: number;
   hexR: number;
-  admiralId: string | null;
+  /** Noble assigned as fleet IC. */
+  commanderNobleId: string | null;
+  /** Noble assigned as fleet 2IC. Requires Chain of Command tech. */
+  secondInCommandNobleId: string | null;
   supplyBank: number;
   movementPath: HexCoord[] | null;
   ships: Ship[];

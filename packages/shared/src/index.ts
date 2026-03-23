@@ -12,6 +12,7 @@ export * from './types/economy.js';
 export * from './types/stability.js';
 export * from './types/orders.js';
 export * from './types/notifications.js';
+export * from './types/noble.js';
 
 // Constants
 export * from './constants/terrain.js';
@@ -27,6 +28,7 @@ export * from './constants/weapons.js';
 export * from './constants/shields.js';
 export * from './constants/armour.js';
 export * from './constants/mounts.js';
+export * from './constants/nobles.js';
 
 // Logic
 export * from './logic/economy.js';
@@ -37,3 +39,5 @@ export * from './logic/supply.js';
 export * from './logic/pathfinding.js';
 export * from './logic/combat-engine.js';
 export * from './logic/stability.js';
+export * from './logic/noble-combat.js';
+export * from './logic/noble-names.js';

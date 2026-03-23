@@ -27,6 +27,8 @@ export interface GameState {
   unitTemplates: Record<string, unknown>[];
   weaponDesigns: Record<string, unknown>[];
   equipmentOrders: Record<string, unknown>[];
+  nobles: Record<string, unknown>[];
+  nobleFamilies: Record<string, unknown>[];
   movementLog: Record<string, unknown> | null;
 }
 
@@ -56,6 +58,8 @@ const initialState: GameState = {
   unitTemplates: [],
   weaponDesigns: [],
   equipmentOrders: [],
+  nobles: [],
+  nobleFamilies: [],
   movementLog: null,
 };
 

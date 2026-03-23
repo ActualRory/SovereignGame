@@ -17,9 +17,9 @@ import type {
 import { getWeightedVeterancyModifier, UNIT_STATE_THRESHOLDS, STATE_DICE_MULTIPLIER, COMBAT_PROMOTION_RATE } from '../constants/units.js';
 import { TERRAIN } from '../constants/terrain.js';
 import { SHIPS, type ShipStats } from '../constants/ships.js';
+import type { NobleCombatBonus } from '../types/noble.js';
 import {
   DICE_SIDES, MAX_COMBAT_ROUNDS,
-  COMMAND_BONUS_PER_POINT, COMMAND_WIDTH_PER_2_POINTS,
   MANEUVER_WARFARE_WIDTH_BONUS, MODERN_DOCTRINE_BONUS,
   DICE_MULTIPLIER, ARMOUR_HITSON_DIVISOR,
 } from '../constants/combat.js';
@@ -83,7 +83,10 @@ export interface CombatInput {
 
 export interface ArmySide {
   armyId: string;
-  commandRating: number;
+  /** Noble-derived combat bonuses (replaces flat commandRating). */
+  nobleBonus: NobleCombatBonus;
+  /** Per-unit specialty dice bonus keyed by unit ID (commander specialty trait). */
+  unitSpecialtyBonuses?: Record<string, number>;
   units: CombatUnitInput[];
 }
 
@@ -122,8 +125,13 @@ export function resolveCombat(input: CombatInput): CombatResult {
   const baseFrontlineWidth = terrainStats.frontlineWidth;
   const defenceBonus = terrainStats.defenceBonus + (input.riverCrossing ? 1 : 0);
 
-  const attackerWidth = calcFrontlineWidth(baseFrontlineWidth, input.attacker.commandRating, input.attackerHasManeuverWarfare ?? false);
-  const defenderWidth = calcFrontlineWidth(baseFrontlineWidth, input.defender.commandRating, input.defenderHasManeuverWarfare ?? false);
+  const atkBonus = input.attacker.nobleBonus;
+  const defBonus = input.defender.nobleBonus;
+  const atkSpecialty = input.attacker.unitSpecialtyBonuses ?? {};
+  const defSpecialty = input.defender.unitSpecialtyBonuses ?? {};
+
+  const attackerWidth = calcFrontlineWidth(baseFrontlineWidth, atkBonus.widthBonus, input.attackerHasManeuverWarfare ?? false);
+  const defenderWidth = calcFrontlineWidth(baseFrontlineWidth, defBonus.widthBonus, input.defenderHasManeuverWarfare ?? false);
 
   const rounds: CombatRound[] = [];
 
@@ -152,8 +160,8 @@ export function resolveCombat(input: CombatInput): CombatResult {
     const atkFireUnits = [...atkBack, ...atkFlank, ...atkFront];
     const defFireUnits = [...defBack, ...defFlank, ...defFront];
 
-    const atkFireHits = resolvePhase('fire', atkFireUnits, defFront, input.attacker.commandRating, 0, input.attackerHasModernDoctrine ?? false, rng, fireRolls, 'attacker');
-    const defFireHits = resolvePhase('fire', defFireUnits, atkFront, input.defender.commandRating, defenceBonus, input.defenderHasModernDoctrine ?? false, rng, fireRolls, 'defender');
+    const atkFireHits = resolvePhase('fire', atkFireUnits, defFront, atkBonus.fireBonus, atkSpecialty, 0, input.attackerHasModernDoctrine ?? false, rng, fireRolls, 'attacker');
+    const defFireHits = resolvePhase('fire', defFireUnits, atkFront, defBonus.fireBonus, defSpecialty, defenceBonus, input.defenderHasModernDoctrine ?? false, rng, fireRolls, 'defender');
 
     applyTargetedDamage(atkFireHits, defFront, atkFlanking ? defBack : [], casualties, 'defender');
     applyTargetedDamage(defFireHits, atkFront, defFlanking ? atkBack : [], casualties, 'attacker');
@@ -162,8 +170,8 @@ export function resolveCombat(input: CombatInput): CombatResult {
     const atkShockUnits = [...atkFront, ...atkFlank];
     const defShockUnits = [...defFront, ...defFlank];
 
-    const atkShockHits = resolvePhase('shock', atkShockUnits, defFront, input.attacker.commandRating, 0, input.attackerHasModernDoctrine ?? false, rng, shockRolls, 'attacker');
-    const defShockHits = resolvePhase('shock', defShockUnits, atkFront, input.defender.commandRating, defenceBonus, input.defenderHasModernDoctrine ?? false, rng, shockRolls, 'defender');
+    const atkShockHits = resolvePhase('shock', atkShockUnits, defFront, atkBonus.shockBonus, atkSpecialty, 0, input.attackerHasModernDoctrine ?? false, rng, shockRolls, 'attacker');
+    const defShockHits = resolvePhase('shock', defShockUnits, atkFront, defBonus.shockBonus, defSpecialty, defenceBonus, input.defenderHasModernDoctrine ?? false, rng, shockRolls, 'defender');
 
     applyTargetedDamage(atkShockHits, defFront, atkFlanking ? defBack : [], casualties, 'defender');
     applyTargetedDamage(defShockHits, atkFront, defFlanking ? atkBack : [], casualties, 'attacker');
@@ -260,8 +268,13 @@ export function resolveSiegeAssault(input: CombatInput): CombatResult {
   const siegeWidth = 4;
   const defenceBonus = terrainStats.defenceBonus + 2;
 
-  const attackerWidth = calcFrontlineWidth(siegeWidth, input.attacker.commandRating, input.attackerHasManeuverWarfare ?? false);
-  const defenderWidth = calcFrontlineWidth(siegeWidth, input.defender.commandRating, input.defenderHasManeuverWarfare ?? false);
+  const siegeAtkBonus = input.attacker.nobleBonus;
+  const siegeDefBonus = input.defender.nobleBonus;
+  const siegeAtkSpec = input.attacker.unitSpecialtyBonuses ?? {};
+  const siegeDefSpec = input.defender.unitSpecialtyBonuses ?? {};
+
+  const attackerWidth = calcFrontlineWidth(siegeWidth, siegeAtkBonus.widthBonus, input.attackerHasManeuverWarfare ?? false);
+  const defenderWidth = calcFrontlineWidth(siegeWidth, siegeDefBonus.widthBonus, input.defenderHasManeuverWarfare ?? false);
 
   const rounds: CombatRound[] = [];
 
@@ -281,15 +294,15 @@ export function resolveSiegeAssault(input: CombatInput): CombatResult {
     const moraleChecks: MoraleCheck[] = [];
 
     const defFireUnits = [...defBack, ...defFront];
-    const defFireHits = resolvePhase('fire', defFireUnits, atkFront, input.defender.commandRating, defenceBonus, input.defenderHasModernDoctrine ?? false, rng, fireRolls, 'defender');
+    const defFireHits = resolvePhase('fire', defFireUnits, atkFront, siegeDefBonus.fireBonus, siegeDefSpec, defenceBonus, input.defenderHasModernDoctrine ?? false, rng, fireRolls, 'defender');
     applyTargetedDamage(defFireHits, atkFront, [], casualties, 'attacker');
 
     const atkFireUnits = [...atkBack, ...atkFront];
-    const atkFireHits = resolvePhase('fire', atkFireUnits, defFront, input.attacker.commandRating, 0, input.attackerHasModernDoctrine ?? false, rng, fireRolls, 'attacker');
+    const atkFireHits = resolvePhase('fire', atkFireUnits, defFront, siegeAtkBonus.fireBonus, siegeAtkSpec, 0, input.attackerHasModernDoctrine ?? false, rng, fireRolls, 'attacker');
     applyTargetedDamage(atkFireHits, defFront, [], casualties, 'defender');
 
     const atkShockUnits = atkFront.filter(u => totalTroops(u.troopCounts) > 0);
-    const atkShockHits = resolvePhase('shock', atkShockUnits, defFront, input.attacker.commandRating, 0, input.attackerHasModernDoctrine ?? false, rng, shockRolls, 'attacker');
+    const atkShockHits = resolvePhase('shock', atkShockUnits, defFront, siegeAtkBonus.shockBonus, siegeAtkSpec, 0, input.attackerHasModernDoctrine ?? false, rng, shockRolls, 'attacker');
     applyTargetedDamage(atkShockHits, defFront, [], casualties, 'defender');
 
     for (const cas of casualties) {
@@ -336,9 +349,9 @@ function totalTroops(tc: { rookie: number; capable: number; veteran: number }): 
   return tc.rookie + tc.capable + tc.veteran;
 }
 
-function calcFrontlineWidth(base: number, commandRating: number, hasManeuverWarfare: boolean): number {
+function calcFrontlineWidth(base: number, nobleWidthBonus: number, hasManeuverWarfare: boolean): number {
   let width = base;
-  width += Math.floor(commandRating / 2) * COMMAND_WIDTH_PER_2_POINTS;
+  width += nobleWidthBonus; // from noble's maneuver trait
   if (hasManeuverWarfare) width += MANEUVER_WARFARE_WIDTH_BONUS;
   return width;
 }
@@ -381,7 +394,8 @@ function resolvePhase(
   phase: 'fire' | 'shock',
   attackingUnits: CombatUnit[],
   defenderFrontline: CombatUnit[],
-  commandRating: number,
+  phaseBonus: number,
+  unitSpecialtyBonuses: Record<string, number>,
   terrainBonus: number,
   hasModernDoctrine: boolean,
   rng: () => number,
@@ -410,7 +424,8 @@ function resolvePhase(
     const vetMod = getWeightedVeterancyModifier(unit.troopCounts.rookie, unit.troopCounts.capable, unit.troopCounts.veteran);
     const baseThreshold = Math.max(1, unit.hitsOn - vetMod);
 
-    const bonus = (commandRating * COMMAND_BONUS_PER_POINT)
+    const specialtyBonus = unitSpecialtyBonuses[unit.id] ?? 0;
+    const bonus = phaseBonus + specialtyBonus
       + (side === 'defender' ? terrainBonus : 0)
       + (hasModernDoctrine ? MODERN_DOCTRINE_BONUS : 0);
 
@@ -699,7 +714,8 @@ export interface NavalCombatInput {
 
 export interface NavalSide {
   fleetId: string;
-  commandRating: number;
+  /** Noble-derived combat bonuses (replaces flat commandRating). */
+  nobleBonus: NobleCombatBonus;
   ships: NavalShipInput[];
 }
 
@@ -753,15 +769,15 @@ export function resolveNavalCombat(input: NavalCombatInput): NavalCombatResult {
     const fire2: DiceRoll[] = [];
     const casualties: NavalCasualty[] = [];
 
-    const atkDmg1 = resolveNavalFire(activeAtk, input.attacker.commandRating, input.attackerHasModernDoctrine ?? false, rng, fire1, 'attacker');
-    const defDmg1 = resolveNavalFire(activeDef, input.defender.commandRating, input.defenderHasModernDoctrine ?? false, rng, fire1, 'defender');
+    const atkDmg1 = resolveNavalFire(activeAtk, input.attacker.nobleBonus.fireBonus, input.attackerHasModernDoctrine ?? false, rng, fire1, 'attacker');
+    const defDmg1 = resolveNavalFire(activeDef, input.defender.nobleBonus.fireBonus, input.defenderHasModernDoctrine ?? false, rng, fire1, 'defender');
     applyNavalDamage(atkDmg1, activeDef, casualties, 'defender');
     applyNavalDamage(defDmg1, activeAtk, casualties, 'attacker');
 
     const stillAtk = attackers.filter(s => s.hullCurrent > 0);
     const stillDef = defenders.filter(s => s.hullCurrent > 0);
-    const atkDmg2 = resolveNavalFire(stillAtk, input.attacker.commandRating, input.attackerHasModernDoctrine ?? false, rng, fire2, 'attacker');
-    const defDmg2 = resolveNavalFire(stillDef, input.defender.commandRating, input.defenderHasModernDoctrine ?? false, rng, fire2, 'defender');
+    const atkDmg2 = resolveNavalFire(stillAtk, input.attacker.nobleBonus.fireBonus, input.attackerHasModernDoctrine ?? false, rng, fire2, 'attacker');
+    const defDmg2 = resolveNavalFire(stillDef, input.defender.nobleBonus.fireBonus, input.defenderHasModernDoctrine ?? false, rng, fire2, 'defender');
     applyNavalDamage(atkDmg2, stillDef, casualties, 'defender');
     applyNavalDamage(defDmg2, stillAtk, casualties, 'attacker');
 
@@ -804,7 +820,7 @@ export function resolveNavalCombat(input: NavalCombatInput): NavalCombatResult {
   };
 }
 
-function resolveNavalFire(ships: CombatShip[], commandRating: number, hasModernDoctrine: boolean, rng: () => number, rolls: DiceRoll[], side: 'attacker' | 'defender'): number {
+function resolveNavalFire(ships: CombatShip[], fireBonus: number, hasModernDoctrine: boolean, rng: () => number, rolls: DiceRoll[], side: 'attacker' | 'defender'): number {
   let totalDamage = 0;
   for (const ship of ships) {
     if (ship.hullCurrent <= 0) continue;
@@ -813,7 +829,7 @@ function resolveNavalFire(ships: CombatShip[], commandRating: number, hasModernD
     const hullPct = ship.hullCurrent / ship.hullMax;
     const multiplier = hullPct > 0.5 ? 1.0 : hullPct > 0.25 ? 0.6 : 0.3;
     const numDice = Math.max(1, Math.round(stats.fire * multiplier));
-    const bonus = (commandRating * COMMAND_BONUS_PER_POINT) + (hasModernDoctrine ? MODERN_DOCTRINE_BONUS : 0);
+    const bonus = fireBonus + (hasModernDoctrine ? MODERN_DOCTRINE_BONUS : 0);
     // Experienced crew aim better — weighted vet modifier reduces hitsOn
     const vetMod = getWeightedVeterancyModifier(ship.crewCounts.rookie, ship.crewCounts.capable, ship.crewCounts.veteran);
     const threshold = Math.max(2, stats.hitsOn - Math.floor(vetMod));

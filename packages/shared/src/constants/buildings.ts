@@ -215,6 +215,11 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     techRequired: 'navigation',
     effect: 'Sea trade + ship construction',
   },
+  estate: {
+    category: 'civic', costTier: 'standard', minSettlement: 'hamlet',
+    materials: ['timber'], usesSlot: true,
+    effect: 'Supports 2 nobles. Below cap, a new noble is generated every 4 turns.',
+  },
 
   // ── Military ──
   barracks: {

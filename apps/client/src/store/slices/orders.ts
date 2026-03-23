@@ -69,7 +69,7 @@ export interface PendingOrders {
   techResearch: string | null;
   recruitments: RecruitFromTemplateOrder[];
   movements: Array<{ armyId: string; path: HexCoord[] }>;
-  hireGenerals: Array<{ settlementId: string; name: string; isAdmiral: boolean }>;
+  nobleOrders: Array<Record<string, unknown>>;
   createArmies: Array<{ hexQ: number; hexR: number; name: string }>;
   newSettlements: Array<{ hexQ: number; hexR: number; name: string }>;
   tradeProposals: TradeProposalOrder[];
@@ -89,8 +89,6 @@ export interface PendingOrders {
   disbandUnits: Array<{ unitId: string; armyId: string }>;
   upgradeUnits: Array<{ unitId: string; armyId: string; settlementId: string }>;
   replenishments: Array<{ unitId: string; armyId: string; settlementId: string }>;
-  assignOfficers: Array<{ generalId: string; unitId: string }>;
-  unassignOfficers: string[];
 }
 
 export interface OrdersSlice {
@@ -112,7 +110,7 @@ const defaultOrders = (taxRate = 'low'): PendingOrders => ({
   techResearch: null,
   recruitments: [],
   movements: [],
-  hireGenerals: [],
+  nobleOrders: [],
   createArmies: [],
   newSettlements: [],
   tradeProposals: [],
@@ -132,8 +130,6 @@ const defaultOrders = (taxRate = 'low'): PendingOrders => ({
   disbandUnits: [],
   upgradeUnits: [],
   replenishments: [],
-  assignOfficers: [],
-  unassignOfficers: [],
 });
 
 export const createOrdersSlice: StateCreator<OrdersSlice> = (set) => ({

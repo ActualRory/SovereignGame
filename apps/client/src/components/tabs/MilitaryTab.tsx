@@ -601,14 +601,27 @@ function fmtStat(v: number | string): string {
   return v % 1 === 0 ? String(v) : v.toFixed(1);
 }
 
+/** Stat key, display label, tooltip description. */
+const STAT_DISPLAY: Array<[string, string, string]> = [
+  ['fire', 'Fire', 'Ranged attack power. More dice in the fire phase.'],
+  ['shock', 'Shock', 'Melee attack power. More dice in the shock phase.'],
+  ['defence', 'Def', 'Reduces incoming damage and improves survivability.'],
+  ['morale', 'Morale', 'Morale threshold (d20). Units that fail break and rout.'],
+  ['armour', 'Armour', 'Raises the to-hit threshold enemies need to wound this unit.'],
+  ['ap', 'AP', 'Armour Piercing. Lowers the target\u2019s effective armour.'],
+  ['hitsOn', 'THAC0', 'To Hit Armour Class 0. Base d20 threshold to land a hit \u2014 lower is better. Modified by armour and AP.'],
+];
+
 function StatsPreview({ stats }: { stats: { fire: number; shock: number; defence: number; morale: number; armour: number; ap: number; hitsOn: number } }) {
   return (
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8, fontSize: 12 }}>
-      {[['Fire', stats.fire], ['Shock', stats.shock], ['Def', stats.defence], ['Morale', stats.morale], ['Armour', stats.armour], ['AP', stats.ap], ['Hits', `${stats.hitsOn}+`]].map(([label, val]) => (
-        <div key={label as string} style={{ textAlign: 'center', minWidth: 36 }}>
-          <div style={{ color: 'var(--text-muted)', marginBottom: 2 }}>{label}</div>
-          <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{fmtStat(val as number | string)}</div>
-        </div>
+      {STAT_DISPLAY.map(([key, label, tip]) => (
+        <Tooltip key={key} content={<span style={{ fontSize: 11 }}>{tip}</span>}>
+          <div style={{ textAlign: 'center', minWidth: 36, cursor: 'help' }}>
+            <div style={{ color: 'var(--text-muted)', marginBottom: 2, borderBottom: '1px dotted var(--text-muted)' }}>{label}</div>
+            <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{key === 'hitsOn' ? `${(stats as any)[key]}+` : fmtStat((stats as any)[key])}</div>
+          </div>
+        </Tooltip>
       ))}
     </div>
   );
@@ -1755,11 +1768,13 @@ function NavalCodex() {
                   <div key={type} className="codex-entry">
                     <div className="codex-entry-name">{fmt(type)}</div>
                     <div className="codex-entry-stats">
-                      {[['Fire', stats.fire], ['Shock', stats.shock], ['Def', stats.defence], ['Morale', stats.morale], ['Hull', stats.hull], ['AP', stats.ap], ['Hits', `${stats.hitsOn}+`]].map(([l, v]) => (
-                        <div key={l as string} className="codex-stat">
-                          <span className="codex-stat-label">{l}</span>
-                          <span className="codex-stat-value">{v}</span>
-                        </div>
+                      {[['Fire', stats.fire, 'Ranged attack power'], ['Shock', stats.shock, 'Melee attack power'], ['Def', stats.defence, 'Damage reduction'], ['Morale', stats.morale, 'Morale threshold (d20)'], ['Hull', stats.hull, 'Hit points'], ['AP', stats.ap, 'Armour Piercing'], ['THAC0', `${stats.hitsOn}+`, 'Base to-hit threshold (lower is better)']].map(([l, v, tip]) => (
+                        <Tooltip key={l as string} content={<span style={{ fontSize: 11 }}>{tip}</span>}>
+                          <div className="codex-stat" style={{ cursor: 'help' }}>
+                            <span className="codex-stat-label" style={{ borderBottom: '1px dotted var(--text-muted)' }}>{l}</span>
+                            <span className="codex-stat-value">{v}</span>
+                          </div>
+                        </Tooltip>
                       ))}
                     </div>
                     <div className="codex-entry-detail">{stats.notes}</div>

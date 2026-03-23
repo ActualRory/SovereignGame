@@ -21,6 +21,17 @@ function totalTroops(t: TroopCounts): number {
   return t.rookie + t.capable + t.veteran;
 }
 
+/** Stat key, display label, tooltip description. Shared across stat displays. */
+const STAT_DISPLAY: Array<[string, string, string]> = [
+  ['fire', 'Fire', 'Ranged attack power. More dice in the fire phase.'],
+  ['shock', 'Shock', 'Melee attack power. More dice in the shock phase.'],
+  ['defence', 'Def', 'Reduces incoming damage and improves survivability.'],
+  ['morale', 'Mor', 'Morale threshold (d20). Units that fail break and rout.'],
+  ['armour', 'Arm', 'Raises the to-hit threshold enemies need to wound this unit.'],
+  ['ap', 'AP', 'Armour Piercing. Lowers the target\u2019s effective armour.'],
+  ['hitsOn', 'THAC0', 'To Hit Armour Class 0. Base d20 threshold to land a hit \u2014 lower is better. Modified by armour and AP.'],
+];
+
 const STATE_LABELS: Record<string, { label: string; color: string }> = {
   full: { label: 'Full Strength', color: 'var(--accent-green)' },
   depleted: { label: 'Depleted', color: 'var(--accent-gold)' },
@@ -328,11 +339,13 @@ function ArmyPanelUnitCard({ unit, templates, weaponDesigns, generals }: {
           {/* Stats */}
           {stats && (
             <div className="army-examine-stats">
-              {[['Fire', stats.fire], ['Shock', stats.shock], ['Def', stats.defence], ['Mor', stats.morale], ['Arm', stats.armour], ['AP', stats.ap], ['Hits', `${stats.hitsOn}+`]].map(([label, val]) => (
-                <div key={label as string} className="army-examine-stat-cell">
-                  <div className="army-examine-stat-cell-label">{label}</div>
-                  <div className="army-examine-stat-cell-value">{val}</div>
-                </div>
+              {STAT_DISPLAY.map(([key, label, tip]) => (
+                <Tooltip key={key} content={<span style={{ fontSize: 11 }}>{tip}</span>}>
+                  <div className="army-examine-stat-cell" style={{ cursor: 'help' }}>
+                    <div className="army-examine-stat-cell-label">{label}</div>
+                    <div className="army-examine-stat-cell-value">{key === 'hitsOn' ? `${(stats as any)[key]}+` : (stats as any)[key]}</div>
+                  </div>
+                </Tooltip>
               ))}
             </div>
           )}

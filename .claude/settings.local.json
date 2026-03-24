@@ -36,7 +36,17 @@
       "Bash(grep -r \"initialStorage\\\\|starting.*storage\\\\|storage.*farm\" '/c/Users/Rory/Kingdoms Game/apps/server/src/db' --include=*.ts)",
       "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
       "WebSearch",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(ssh rory@beelink-zero \"cd ~/kingdoms-game && docker compose logs server --tail 50 2>&1\")",
+      "Bash(ssh rory@192.168.0.196 \"cd ~/kingdoms-game && docker compose logs server --tail 80 2>&1\")",
+      "Bash(ssh rory@192.168.0.196 \"cd ~/kingdoms-game && docker compose exec postgres psql -U kingdoms kingdoms -c \"\"SELECT column_name FROM information_schema.columns WHERE table_name = ''game_hexes'' ORDER BY ordinal_position;\"\"\")",
+      "Bash(ssh rory@192.168.0.196 \"cd ~/kingdoms-game && grep POSTGRES docker-compose.yml\")",
+      "Bash(ssh rory@192.168.0.196 \"cd ~/kingdoms-game && docker compose exec postgres psql -U postgres kingdoms -c \"\"SELECT column_name FROM information_schema.columns WHERE table_name = ''game_hexes'' ORDER BY ordinal_position;\"\"\")",
+      "Bash(ssh rory@192.168.0.196 \"cd ~/kingdoms-game && git log --oneline -3\")",
+      "Bash(ssh rory@192.168.0.196 \"cd ~/kingdoms-game && docker compose exec -w /app/apps/server server npx drizzle-kit push\")",
+      "Bash(ssh -t rory@192.168.0.196 \"cd ~/kingdoms-game && docker compose exec -T -w /app/apps/server server npx drizzle-kit push --force\")",
+      "Bash(ssh rory@192.168.0.196 \"cd ~/kingdoms-game && docker compose exec -w /app/apps/server server grep -c ''claimingPlayerId\\\\|conversionStartedTurn\\\\|conversionType'' src/db/schema.ts\")",
+      "Bash(ssh rory@192.168.0.196 \"cd ~/kingdoms-game && git log --oneline -5\")"
     ]
   }
 }

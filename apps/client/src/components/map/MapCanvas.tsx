@@ -561,13 +561,21 @@ export function MapCanvas() {
         const duration = isEnemyHex ? 4 : 2;
         const progress = Math.min(1, (currentTurn - h.claimStartedTurn) / duration);
         const claimColor = playerColors.get(h.claimingPlayerId) ?? 0xCCAA44;
-        const radius = 8;
-        iconGraphics.circle(pos.x, pos.y - 20, radius);
+        const r = 8;
+        const cx = pos.x, cy = pos.y - 20;
+        iconGraphics.circle(cx, cy, r);
         iconGraphics.stroke({ color: 0x333333, width: 3, alpha: 0.3 });
-        // Progress arc
+        // Progress arc as polyline segments
         const startAngle = -Math.PI / 2;
-        const endAngle = startAngle + progress * Math.PI * 2;
-        iconGraphics.arc(pos.x, pos.y - 20, radius, startAngle, endAngle);
+        const sweep = progress * Math.PI * 2;
+        const segments = Math.max(8, Math.ceil(sweep * 12));
+        for (let i = 0; i <= segments; i++) {
+          const a = startAngle + (i / segments) * sweep;
+          const px = cx + Math.cos(a) * r;
+          const py = cy + Math.sin(a) * r;
+          if (i === 0) iconGraphics.moveTo(px, py);
+          else iconGraphics.lineTo(px, py);
+        }
         iconGraphics.stroke({ color: claimColor, width: 2.5, alpha: 0.9 });
       }
 
@@ -575,12 +583,20 @@ export function MapCanvas() {
       if (h.conversionStartedTurn != null && h.conversionType && fogState === 'full_vision') {
         const currentTurn = (useStore.getState() as any).game?.currentTurn ?? 0;
         const progress = Math.min(1, (currentTurn - h.conversionStartedTurn) / 4);
-        const radius = 7;
-        iconGraphics.circle(pos.x + 16, pos.y - 18, radius);
+        const r = 7;
+        const cx = pos.x + 16, cy = pos.y - 18;
+        iconGraphics.circle(cx, cy, r);
         iconGraphics.stroke({ color: 0x333333, width: 3, alpha: 0.3 });
         const startAngle = -Math.PI / 2;
-        const endAngle = startAngle + progress * Math.PI * 2;
-        iconGraphics.arc(pos.x + 16, pos.y - 18, radius, startAngle, endAngle);
+        const sweep = progress * Math.PI * 2;
+        const segments = Math.max(8, Math.ceil(sweep * 12));
+        for (let i = 0; i <= segments; i++) {
+          const a = startAngle + (i / segments) * sweep;
+          const px = cx + Math.cos(a) * r;
+          const py = cy + Math.sin(a) * r;
+          if (i === 0) iconGraphics.moveTo(px, py);
+          else iconGraphics.lineTo(px, py);
+        }
         iconGraphics.stroke({ color: 0x7A8A3A, width: 2.5, alpha: 0.9 });
       }
     }

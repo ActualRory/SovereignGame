@@ -1637,10 +1637,12 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       const [army] = await db.select().from(schema.armies)
         .where(eq(schema.armies.id, moveOrder.armyId));
       if (!army || army.ownerId !== player.id) continue;
-      if (moveOrder.path.length < 2) continue;
+      if (moveOrder.path.length === 0) continue;
 
+      // Prepend the army's current position so the resolver can find its place on the path
+      const fullPath = [{ q: army.hexQ, r: army.hexR }, ...moveOrder.path];
       await db.update(schema.armies)
-        .set({ movementPath: moveOrder.path as any })
+        .set({ movementPath: fullPath as any })
         .where(eq(schema.armies.id, army.id));
     }
   }

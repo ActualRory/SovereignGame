@@ -71,6 +71,7 @@ export function hexEdgeMidpoints(): { x: number; y: number }[] {
 /** Terrain color mapping — dark, muted tones for candlelit war-table feel. */
 export const TERRAIN_COLORS: Record<string, number> = {
   plains:    0x6B7A3A,
+  farmland:  0x8A9A4A,
   hills:     0x6B5B3E,
   mountains: 0x4A4240,
   forest:    0x2D5A28,
@@ -81,6 +82,7 @@ export const TERRAIN_COLORS: Record<string, number> = {
 
 export const TERRAIN_COLORS_SELECTED: Record<string, number> = {
   plains:    0x8B9A5A,
+  farmland:  0xAABA6A,
   hills:     0x8B7B5E,
   mountains: 0x6A6260,
   forest:    0x4D7A48,

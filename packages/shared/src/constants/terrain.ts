@@ -18,6 +18,14 @@ export const TERRAIN: Record<TerrainType, TerrainStats> = {
     possibleResources: ['grain', 'cattle', 'wool', 'cotton', 'wild_horses'],
     frontlineWidth: 10,
   },
+  farmland: {
+    movementCost: 1,
+    supply: 'high',
+    supplyValue: 5,
+    defenceBonus: 0,
+    possibleResources: ['grain', 'cattle', 'fruit'],
+    frontlineWidth: 10,
+  },
   hills: {
     movementCost: 2,
     supply: 'medium',

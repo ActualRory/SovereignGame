@@ -66,6 +66,8 @@ export function TurnBar() {
         disbandUnits: pendingOrders.disbandUnits,
         upgradeUnits: pendingOrders.upgradeUnits,
         replenishments: pendingOrders.replenishments,
+        claimHexes: pendingOrders.claimHexes,
+        farmlandConversions: pendingOrders.farmlandConversions,
       };
 
       const res = await fetch(`/api/games/${slug}/orders`, {

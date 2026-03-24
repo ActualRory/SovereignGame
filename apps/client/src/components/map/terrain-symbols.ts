@@ -209,10 +209,43 @@ function drawDesert(g: Graphics, rng: () => number): void {
   g.fill({ color: 0x8A7040, alpha: 0.65 });
 }
 
+function drawFarmland(g: Graphics, rng: () => number): void {
+  // Neat rows of crop furrows — parallel lines with small wheat sheaves
+  const rows = 4 + Math.floor(rng() * 2);
+  const rowSpacing = SYMBOL_AREA * 0.8 / rows;
+  const startY = -SYMBOL_AREA * 0.35;
+
+  for (let i = 0; i < rows; i++) {
+    const y = startY + i * rowSpacing + (rng() - 0.5) * 2;
+    const xStart = -SYMBOL_AREA * 0.45 + rng() * 4;
+    const xEnd = SYMBOL_AREA * 0.45 - rng() * 4;
+
+    // Furrow line
+    g.moveTo(xStart, y);
+    g.lineTo(xEnd, y);
+
+    // Small wheat sheaves along the row
+    const sheafCount = 2 + Math.floor(rng() * 3);
+    for (let s = 0; s < sheafCount; s++) {
+      const sx = xStart + (xEnd - xStart) * ((s + 0.5) / sheafCount) + (rng() - 0.5) * 4;
+      const sheafH = 4 + rng() * 3;
+      // Central stalk
+      g.moveTo(sx, y);
+      g.lineTo(sx, y - sheafH);
+      // Two angled grain heads
+      g.moveTo(sx - 2, y - sheafH + 1);
+      g.lineTo(sx, y - sheafH);
+      g.lineTo(sx + 2, y - sheafH + 1);
+    }
+  }
+  g.stroke({ color: 0x7A8A3A, width: 1.0, alpha: 0.65 });
+}
+
 // ─── Registry ───
 
 const DRAW_FNS: Record<string, TerrainDrawFn> = {
   plains: drawPlains,
+  farmland: drawFarmland,
   hills: drawHills,
   mountains: drawMountains,
   forest: drawForest,

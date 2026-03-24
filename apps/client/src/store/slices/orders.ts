@@ -73,6 +73,8 @@ export interface PendingOrders {
   disbandUnits: Array<{ unitId: string; armyId: string }>;
   upgradeUnits: Array<{ unitId: string; armyId: string; settlementId: string }>;
   replenishments: Array<{ unitId: string; armyId: string; settlementId: string }>;
+  claimHexes: Array<{ hexQ: number; hexR: number }>;
+  farmlandConversions: Array<{ hexQ: number; hexR: number }>;
 }
 
 export interface OrdersSlice {
@@ -84,6 +86,12 @@ export interface OrdersSlice {
   removeRecruitment: (index: number) => void;
   addSiegeAssault: (armyId: string, targetHexQ: number, targetHexR: number) => void;
   removeSiegeAssault: (armyId: string) => void;
+  addClaimHex: (hexQ: number, hexR: number) => void;
+  removeClaimHex: (hexQ: number, hexR: number) => void;
+  addNewSettlement: (order: { hexQ: number; hexR: number; name: string }) => void;
+  removeNewSettlement: (hexQ: number, hexR: number) => void;
+  addFarmlandConversion: (hexQ: number, hexR: number) => void;
+  removeFarmlandConversion: (hexQ: number, hexR: number) => void;
   resetOrders: (taxRate?: string) => void;
 }
 
@@ -112,6 +120,8 @@ const defaultOrders = (taxRate = 'low'): PendingOrders => ({
   disbandUnits: [],
   upgradeUnits: [],
   replenishments: [],
+  claimHexes: [],
+  farmlandConversions: [],
 });
 
 export const createOrdersSlice: StateCreator<OrdersSlice> = (set) => ({
@@ -166,6 +176,57 @@ export const createOrdersSlice: StateCreator<OrdersSlice> = (set) => ({
     pendingOrders: {
       ...s.pendingOrders,
       siegeAssaults: s.pendingOrders.siegeAssaults.filter(sa => sa.armyId !== armyId),
+    },
+  })),
+
+  addClaimHex: (hexQ, hexR) => set((s) => ({
+    pendingOrders: {
+      ...s.pendingOrders,
+      claimHexes: [
+        ...s.pendingOrders.claimHexes.filter(c => !(c.hexQ === hexQ && c.hexR === hexR)),
+        { hexQ, hexR },
+      ],
+    },
+  })),
+
+  removeClaimHex: (hexQ, hexR) => set((s) => ({
+    pendingOrders: {
+      ...s.pendingOrders,
+      claimHexes: s.pendingOrders.claimHexes.filter(c => !(c.hexQ === hexQ && c.hexR === hexR)),
+    },
+  })),
+
+  addNewSettlement: (order) => set((s) => ({
+    pendingOrders: {
+      ...s.pendingOrders,
+      newSettlements: [
+        ...s.pendingOrders.newSettlements.filter(n => !(n.hexQ === order.hexQ && n.hexR === order.hexR)),
+        order,
+      ],
+    },
+  })),
+
+  removeNewSettlement: (hexQ, hexR) => set((s) => ({
+    pendingOrders: {
+      ...s.pendingOrders,
+      newSettlements: s.pendingOrders.newSettlements.filter(n => !(n.hexQ === hexQ && n.hexR === hexR)),
+    },
+  })),
+
+  addFarmlandConversion: (hexQ, hexR) => set((s) => ({
+    pendingOrders: {
+      ...s.pendingOrders,
+      farmlandConversions: [
+        ...s.pendingOrders.farmlandConversions.filter(f => !(f.hexQ === hexQ && f.hexR === hexR)),
+        { hexQ, hexR },
+      ],
+    },
+  })),
+
+  removeFarmlandConversion: (hexQ, hexR) => set((s) => ({
+    pendingOrders: {
+      ...s.pendingOrders,
+      farmlandConversions: s.pendingOrders.farmlandConversions.filter(f => !(f.hexQ === hexQ && f.hexR === hexR)),
     },
   })),
 

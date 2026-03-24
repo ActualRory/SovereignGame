@@ -280,12 +280,21 @@ export function SettlementDetailPanel() {
           {constructing.length > 0 && (
             <div style={{ marginBottom: 6 }}>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Under Construction </span>
-              <div className="settlement-resources" style={{ marginTop: 4 }}>
-                {constructing.map((b: any, i: number) => (
-                  <span key={i} className="resource-tag" style={{ borderColor: 'var(--accent-gold)', color: 'var(--accent-gold)' }}>
-                    {fmt(b.type)} ({b.turnsRemaining}t)
-                  </span>
-                ))}
+              <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {constructing.map((b: any, i: number) => {
+                  const bDef = BUILDINGS[b.type as BuildingType];
+                  const totalTime = bDef ? COST_TIERS[bDef.costTier as CostTier].buildTime : 1;
+                  const progress = totalTime > 0 ? 1 - (b.turnsRemaining / totalTime) : 1;
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, color: 'var(--accent-gold)', minWidth: 80 }}>{fmt(b.type)}</span>
+                      <div style={{ flex: 1, background: 'var(--bg-dark)', borderRadius: 3, height: 6, overflow: 'hidden' }}>
+                        <div style={{ width: `${progress * 100}%`, height: '100%', background: 'var(--accent-gold)', borderRadius: 3, transition: 'width 0.3s' }} />
+                      </div>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 24, textAlign: 'right' }}>{b.turnsRemaining}t</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -293,25 +302,29 @@ export function SettlementDetailPanel() {
             <div style={{ marginBottom: 6 }}>
               <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Queued This Turn </span>
               <div className="settlement-resources" style={{ marginTop: 4 }}>
-                {pendingConstructions.map((c: any, i: number) => (
-                  <span key={i} className="resource-tag" style={{ borderColor: 'var(--accent-green)', color: 'var(--accent-green)' }}>
-                    {fmt(c.buildingType)}
-                    <button
-                      onClick={() => {
-                        const idx = pendingOrders.constructions.indexOf(c);
-                        setPendingOrders({
-                          constructions: pendingOrders.constructions.filter((_: any, j: number) => j !== idx),
-                        });
-                      }}
-                      style={{
-                        marginLeft: 4, background: 'none', border: 'none', color: 'var(--accent-red)',
-                        cursor: 'pointer', fontSize: 12, padding: 0, fontWeight: 600,
-                      }}
-                    >
-                      x
-                    </button>
-                  </span>
-                ))}
+                {pendingConstructions.map((c: any, i: number) => {
+                  const cDef = BUILDINGS[c.buildingType as BuildingType];
+                  const buildTime = cDef ? COST_TIERS[cDef.costTier as CostTier].buildTime : 1;
+                  return (
+                    <span key={i} className="resource-tag" style={{ borderColor: 'var(--accent-green)', color: 'var(--accent-green)' }}>
+                      {fmt(c.buildingType)} ({buildTime}t)
+                      <button
+                        onClick={() => {
+                          const idx = pendingOrders.constructions.indexOf(c);
+                          setPendingOrders({
+                            constructions: pendingOrders.constructions.filter((_: any, j: number) => j !== idx),
+                          });
+                        }}
+                        style={{
+                          marginLeft: 4, background: 'none', border: 'none', color: 'var(--accent-red)',
+                          cursor: 'pointer', fontSize: 12, padding: 0, fontWeight: 600,
+                        }}
+                      >
+                        x
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -742,6 +755,7 @@ function ConstructionModal({ settlement, buildings, storage, usedSlots, maxSlots
   setPendingOrders: (p: any) => void;
   onClose: () => void;
 }) {
+  const [searchFilter, setSearchFilter] = useState('');
   const builtTypes = new Set(buildings.map((b: any) => b.type));
 
   function queueBuild(buildingType: string) {
@@ -761,6 +775,8 @@ function ConstructionModal({ settlement, buildings, storage, usedSlots, maxSlots
     }
   }
 
+  const filterLower = searchFilter.toLowerCase();
+
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
@@ -770,16 +786,25 @@ function ConstructionModal({ settlement, buildings, storage, usedSlots, maxSlots
         background: 'var(--bg-surface)', border: '1px solid var(--border-dark)',
         borderRadius: 8, padding: 24, width: 560, maxHeight: '85vh', overflowY: 'auto',
       }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h3 style={{ margin: 0 }}>Build at {settlement.name}</h3>
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             Slots: {usedSlots}/{maxSlots}
           </span>
         </div>
 
+        <input
+          type="text"
+          className="hex-name-input"
+          placeholder="Search buildings..."
+          value={searchFilter}
+          onChange={e => setSearchFilter(e.target.value)}
+          style={{ marginBottom: 12, width: '100%' }}
+        />
+
         {BUILD_CATEGORIES.map(cat => {
           const categoryBuildings = (Object.entries(BUILDINGS) as [string, any][])
-            .filter(([, def]) => def.category === cat);
+            .filter(([type, def]) => def.category === cat && (!filterLower || fmt(type).toLowerCase().includes(filterLower)));
           if (categoryBuildings.length === 0) return null;
 
           return (
@@ -804,20 +829,27 @@ function ConstructionModal({ settlement, buildings, storage, usedSlots, maxSlots
                 const terrainOk = !def.terrain || (hexTerrain && def.terrain.includes(hexTerrain));
                 const canBuild = !isBuilt && !isPending && tierOk && techOk && slotsOk && goldOk && materialsOk && terrainOk;
 
-                // Build reason string
+                // Categorized reason
                 let reason = '';
-                if (isBuilt) reason = 'Already built';
-                else if (!tierOk) reason = `Requires ${fmt(def.minSettlement)}`;
-                else if (!techOk) reason = `Requires ${fmt(def.techRequired)}`;
-                else if (!slotsOk) reason = 'No building slots';
-                else if (!terrainOk) reason = `Requires ${def.terrain!.map((t: string) => fmt(t)).join(' or ')}`;
-                else if (!goldOk) reason = `Need ${cost.goldCost}g (have ${playerGold})`;
+                let reasonType: 'locked' | 'unavailable' | 'unaffordable' | '' = '';
+                if (isBuilt) { reason = 'Already built'; reasonType = 'unavailable'; }
+                else if (!techOk) { reason = `Requires ${fmt(def.techRequired)}`; reasonType = 'locked'; }
+                else if (!tierOk) { reason = `Requires ${fmt(def.minSettlement)}`; reasonType = 'unavailable'; }
+                else if (!slotsOk) { reason = 'No building slots'; reasonType = 'unavailable'; }
+                else if (!terrainOk) { reason = `Requires ${def.terrain!.map((t: string) => fmt(t)).join(' or ')}`; reasonType = 'unavailable'; }
+                else if (!goldOk) { reason = `Need ${cost.goldCost}g (have ${playerGold})`; reasonType = 'unaffordable'; }
                 else if (!materialsOk) {
                   const missing = def.materials.filter((m: string) => (storage[m] ?? 0) < 1);
                   reason = `Missing: ${missing.map((m: string) => fmt(m)).join(', ')}`;
+                  reasonType = 'unaffordable';
                 }
 
                 const disabled = !canBuild && !isPending;
+                const reasonColor = reasonType === 'locked' ? 'var(--text-muted)' : reasonType === 'unavailable' ? 'var(--text-muted)' : 'var(--accent-red)';
+                const rp = RESEARCH_POINTS[type as BuildingType];
+
+                // Build output info
+                const outputEntries = def.output ? Object.entries(def.output) : [];
 
                 return (
                   <div
@@ -830,13 +862,21 @@ function ConstructionModal({ settlement, buildings, storage, usedSlots, maxSlots
                     <div className="building-row-info">
                       <div className="building-row-name">
                         {fmt(type)}
-                        {!techOk && !isBuilt && (
+                        {reasonType === 'locked' && !isBuilt && (
                           <Tooltip content={<span>Requires: {fmt(def.techRequired)}</span>}>
-                            <span style={{ fontSize: 11, marginLeft: 4, color: 'var(--text-muted)', cursor: 'help' }}>locked</span>
+                            <span style={{ fontSize: 10, marginLeft: 4, color: 'var(--text-muted)', cursor: 'help', textTransform: 'uppercase', letterSpacing: '0.5px' }}>locked</span>
                           </Tooltip>
                         )}
                       </div>
                       {def.effect && <div className="building-row-effect">{def.effect}</div>}
+                      {/* Output / wealth / research */}
+                      {(outputEntries.length > 0 || def.taxWealth || rp) && (
+                        <div style={{ fontSize: 11, color: 'var(--accent-green)', marginTop: 1 }}>
+                          {outputEntries.map(([r, n]) => <span key={r} style={{ marginRight: 8 }}>+{n as number} {fmt(r)}/turn</span>)}
+                          {def.taxWealth && <span style={{ marginRight: 8 }}>+{def.taxWealth} wealth/turn</span>}
+                          {rp && <span>+{rp} research/turn</span>}
+                        </div>
+                      )}
                       <div className="building-row-meta">
                         {def.materials.map((m: string) => (
                           <span key={m} style={{ color: (storage[m] ?? 0) >= 1 ? 'var(--text-muted)' : 'var(--accent-red)' }}>
@@ -848,8 +888,9 @@ function ConstructionModal({ settlement, buildings, storage, usedSlots, maxSlots
                             {fmt(t)}
                           </span>
                         ))}
-                        {cost.buildTime > 1 && <span>{cost.buildTime} turns</span>}
-                        {reason && <span style={{ color: 'var(--accent-red)', fontStyle: 'italic' }}>{reason}</span>}
+                        <span>{cost.buildTime} {cost.buildTime === 1 ? 'turn' : 'turns'}</span>
+                        <span style={{ color: 'var(--text-muted)' }}>{cost.maintenance} gp/turn</span>
+                        {reason && <span style={{ color: reasonColor, fontStyle: 'italic' }}>{reason}</span>}
                       </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>

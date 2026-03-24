@@ -553,6 +553,66 @@ export function MapCanvas() {
           }
         }
       }
+
+      // Claim progress arc
+      if (h.claimStartedTurn != null && h.claimingPlayerId && fogState === 'full_vision') {
+        const currentTurn = (useStore.getState() as any).game?.currentTurn ?? 0;
+        const isEnemyHex = h.ownerId != null && h.ownerId !== h.claimingPlayerId;
+        const duration = isEnemyHex ? 4 : 2;
+        const progress = Math.min(1, (currentTurn - h.claimStartedTurn) / duration);
+        const claimColor = playerColors.get(h.claimingPlayerId) ?? 0xCCAA44;
+        const radius = 8;
+        iconGraphics.circle(pos.x, pos.y - 20, radius);
+        iconGraphics.stroke({ color: 0x333333, width: 3, alpha: 0.3 });
+        // Progress arc
+        const startAngle = -Math.PI / 2;
+        const endAngle = startAngle + progress * Math.PI * 2;
+        iconGraphics.arc(pos.x, pos.y - 20, radius, startAngle, endAngle);
+        iconGraphics.stroke({ color: claimColor, width: 2.5, alpha: 0.9 });
+      }
+
+      // Conversion progress overlay
+      if (h.conversionStartedTurn != null && h.conversionType && fogState === 'full_vision') {
+        const currentTurn = (useStore.getState() as any).game?.currentTurn ?? 0;
+        const progress = Math.min(1, (currentTurn - h.conversionStartedTurn) / 4);
+        const radius = 7;
+        iconGraphics.circle(pos.x + 16, pos.y - 18, radius);
+        iconGraphics.stroke({ color: 0x333333, width: 3, alpha: 0.3 });
+        const startAngle = -Math.PI / 2;
+        const endAngle = startAngle + progress * Math.PI * 2;
+        iconGraphics.arc(pos.x + 16, pos.y - 18, radius, startAngle, endAngle);
+        iconGraphics.stroke({ color: 0x7A8A3A, width: 2.5, alpha: 0.9 });
+      }
+    }
+
+    // ── Pending order overlays ──
+    const pendingOrders = useStore.getState().pendingOrders;
+
+    // Ghost settlement icons for pending founding
+    for (const ns of pendingOrders.newSettlements) {
+      const pos = hexToPixel(ns.hexQ, ns.hexR);
+      iconGraphics.circle(pos.x, pos.y, 10);
+      iconGraphics.stroke({ color: 0xCCAA44, width: 1.5, alpha: 0.5 });
+      iconGraphics.fill({ color: 0xCCAA44, alpha: 0.15 });
+    }
+
+    // Claim order markers
+    for (const cl of pendingOrders.claimHexes) {
+      const pos = hexToPixel(cl.hexQ, cl.hexR);
+      // Small flag icon
+      iconGraphics.moveTo(pos.x - 4, pos.y - 14);
+      iconGraphics.lineTo(pos.x - 4, pos.y - 26);
+      iconGraphics.stroke({ color: 0xCCAA44, width: 1.5, alpha: 0.7 });
+      iconGraphics.rect(pos.x - 4, pos.y - 26, 10, 6);
+      iconGraphics.fill({ color: 0xCCAA44, alpha: 0.5 });
+    }
+
+    // Farmland conversion markers
+    for (const fc of pendingOrders.farmlandConversions) {
+      const pos = hexToPixel(fc.hexQ, fc.hexR);
+      iconGraphics.circle(pos.x + 16, pos.y - 18, 7);
+      iconGraphics.fill({ color: 0x7A8A3A, alpha: 0.2 });
+      iconGraphics.stroke({ color: 0x7A8A3A, width: 1.5, alpha: 0.5 });
     }
   }, [hexes, settlements, armies, players, isAnimatingMovement]);
 

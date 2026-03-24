@@ -14,6 +14,7 @@ const NOISE_AMPLITUDE = 12; // per-channel luminance jitter
 /** Per-terrain tint washes (very low alpha, blended over parchment) */
 const TERRAIN_WASHES: Record<string, { r: number; g: number; b: number; a: number }> = {
   plains:    { r: 107, g: 122, b: 58,  a: 0.08 },
+  farmland:  { r: 138, g: 154, b: 74,  a: 0.10 },
   hills:     { r: 140, g: 120, b: 80,  a: 0.10 },
   mountains: { r: 100, g: 95,  b: 90,  a: 0.10 },
   forest:    { r: 45,  g: 90,  b: 40,  a: 0.10 },

@@ -29,6 +29,7 @@ export * from './constants/shields.js';
 export * from './constants/armour.js';
 export * from './constants/mounts.js';
 export * from './constants/nobles.js';
+export * from './constants/claiming.js';
 
 // Logic
 export * from './logic/economy.js';

@@ -90,8 +90,14 @@ export const gameHexes = pgTable('game_hexes', {
   riverEdges: jsonb('river_edges').$type<string[]>().notNull().default([]),
   ownerId: uuid('owner_id'),
   claimStartedTurn: integer('claim_started_turn'),
+  /** The player who initiated the claim (may differ from ownerId during conquest). */
+  claimingPlayerId: uuid('claiming_player_id'),
   settlementId: uuid('settlement_id'),
   customName: text('custom_name'),
+  /** Turn when terrain conversion started (e.g. plains → farmland). */
+  conversionStartedTurn: integer('conversion_started_turn'),
+  /** Type of conversion in progress (e.g. 'farmland'). */
+  conversionType: text('conversion_type'),
   /** Horse or gryphon breed native to this hex; inherited by drafted mounts. */
   mountBreed: text('mount_breed'),
 }, (table) => [

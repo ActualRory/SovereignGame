@@ -62,6 +62,12 @@ export interface TurnOrders {
 
   // Settlement
   newSettlements: NewSettlementOrder[];
+
+  // Territory
+  claimHexes: ClaimHexOrder[];
+
+  // Terrain conversion
+  farmlandConversions: ConvertFarmlandOrder[];
 }
 
 // ── Construction ──
@@ -231,6 +237,20 @@ export interface NewSettlementOrder {
   name: string;
 }
 
+// ── Territory ──
+
+export interface ClaimHexOrder {
+  hexQ: number;
+  hexR: number;
+}
+
+// ── Terrain Conversion ──
+
+export interface ConvertFarmlandOrder {
+  hexQ: number;
+  hexR: number;
+}
+
 /** Empty turn orders — used when a player doesn't submit. */
 export function emptyOrders(currentTaxRate: TaxRate): TurnOrders {
   return {
@@ -260,5 +280,7 @@ export function emptyOrders(currentTaxRate: TaxRate): TurnOrders {
     tradeProposals: [],
     tradeCancellations: [],
     newSettlements: [],
+    claimHexes: [],
+    farmlandConversions: [],
   };
 }

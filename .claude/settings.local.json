@@ -33,7 +33,10 @@
       "Bash(npx vite:*)",
       "Bash(cd /c/Users/Rory/\"Kingdoms Game\")",
       "Bash(pnpm exec:*)",
-      "Bash(grep -r \"initialStorage\\\\|starting.*storage\\\\|storage.*farm\" '/c/Users/Rory/Kingdoms Game/apps/server/src/db' --include=*.ts)"
+      "Bash(grep -r \"initialStorage\\\\|starting.*storage\\\\|storage.*farm\" '/c/Users/Rory/Kingdoms Game/apps/server/src/db' --include=*.ts)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "WebSearch",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

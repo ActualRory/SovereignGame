@@ -25,6 +25,7 @@ import {
   WEAPONS, SHIELDS, ARMOUR_TYPES, WORKSHOP_POINTS_PER_TURN,
   computeUnitStats,
   type CombatInput, type ArmySide, type CombatUnitInput, type CombatResult,
+  CLAIM_RADIUS, CLAIM_DURATION_UNCLAIMED, CLAIM_DURATION_ENEMY, claimCost,
   type TurnOrders, emptyOrders,
   type TaxRate, type BuildingType, type ResourceType, type SettlementTier,
   type TerrainType, type UnitState, type UnitPosition,
@@ -147,6 +148,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       (hex?.resources ?? []) as ResourceType[],
       settlement.storage as Partial<Record<ResourceType, number>>,
       season,
+      hex?.terrain,
     );
 
     // Apply production to storage
@@ -602,6 +604,68 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       events.push({
         type: 'settlement_founded',
         description: `${player.countryName} founded ${settlement.name}`,
+        playerIds: [player.id],
+      });
+    }
+  }
+
+  // ── Farmland conversions ──
+  const allSettlementsForConversion = await db.select().from(schema.settlements)
+    .where(eq(schema.settlements.gameId, gameId));
+
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
+
+    for (const conv of (orders.farmlandConversions ?? [])) {
+      const targetHex = allHexes.find(
+        h => h.q === conv.hexQ && h.r === conv.hexR && h.ownerId === player.id
+      );
+      if (!targetHex || targetHex.terrain !== 'plains') continue;
+
+      // Require Agriculture tech
+      const hasAgriTech = await db.select().from(schema.techProgress)
+        .where(and(
+          eq(schema.techProgress.gameId, gameId),
+          eq(schema.techProgress.playerId, player.id),
+          eq(schema.techProgress.tech, 'agriculture'),
+          eq(schema.techProgress.isResearched, true),
+        ));
+      if (hasAgriTech.length === 0) continue;
+
+      // Find nearest owned settlement for resource deduction
+      const nearestSettlement = allSettlementsForConversion
+        .filter(s => s.ownerId === player.id)
+        .sort((a, b) =>
+          hexDistance({ q: a.hexQ, r: a.hexR }, { q: conv.hexQ, r: conv.hexR })
+          - hexDistance({ q: b.hexQ, r: b.hexR }, { q: conv.hexQ, r: conv.hexR })
+        )[0];
+      if (!nearestSettlement) continue;
+
+      // Cost: 500 gold + 10 timber from settlement storage
+      const playerRow = updatedPlayers.find(p => p.id === player.id);
+      if (!playerRow || playerRow.gold < 500) continue;
+      const sStorage = nearestSettlement.storage as Record<string, number>;
+      if ((sStorage['timber'] ?? 0) < 10) continue;
+
+      // Deduct costs
+      await db.update(schema.players)
+        .set({ gold: playerRow.gold - 500 })
+        .where(eq(schema.players.id, player.id));
+      playerRow.gold -= 500;
+
+      sStorage['timber'] = (sStorage['timber'] ?? 0) - 10;
+      await db.update(schema.settlements)
+        .set({ storage: sStorage })
+        .where(eq(schema.settlements.id, nearestSettlement.id));
+
+      // Start conversion
+      await db.update(schema.gameHexes)
+        .set({ conversionStartedTurn: turnNumber, conversionType: 'farmland' })
+        .where(eq(schema.gameHexes.id, targetHex.id));
+
+      events.push({
+        type: 'terrain_conversion_started',
+        description: `${player.countryName} began converting hex (${conv.hexQ},${conv.hexR}) to farmland`,
         playerIds: [player.id],
       });
     }
@@ -1956,23 +2020,28 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
 
       if (siegeResult.winner === 'attacker') {
         // Capture: 25% pop loss, transfer ownership
+        const defeatedOwnerId = targetSettlement.ownerId;
         const newPop = Math.round(targetSettlement.population * 0.75);
         await db.update(schema.settlements)
           .set({ ownerId: player.id, population: newPop, siegeProgress: null })
           .where(eq(schema.settlements.id, targetSettlement.id));
 
-        await db.update(schema.gameHexes)
-          .set({ ownerId: player.id })
-          .where(and(
-            eq(schema.gameHexes.gameId, gameId),
-            eq(schema.gameHexes.q, targetSettlement.hexQ),
-            eq(schema.gameHexes.r, targetSettlement.hexR),
-          ));
+        // Flip settlement hex + all hexes within CLAIM_RADIUS owned by the defeated player
+        const captureAllHexes = await db.select().from(schema.gameHexes)
+          .where(eq(schema.gameHexes.gameId, gameId));
+        const settlementCoord = { q: targetSettlement.hexQ, r: targetSettlement.hexR };
+        for (const capHex of captureAllHexes) {
+          if (capHex.ownerId !== defeatedOwnerId) continue;
+          if (hexDistance({ q: capHex.q, r: capHex.r }, settlementCoord) > CLAIM_RADIUS) continue;
+          await db.update(schema.gameHexes)
+            .set({ ownerId: player.id, claimStartedTurn: null, claimingPlayerId: null })
+            .where(eq(schema.gameHexes.id, capHex.id));
+        }
 
         events.push({
           type: 'settlement_captured',
           description: `${player.countryName} captured ${targetSettlement.name} by assault`,
-          playerIds: [player.id, targetSettlement.ownerId],
+          playerIds: [player.id, defeatedOwnerId],
         });
       } else {
         events.push({
@@ -1985,53 +2054,140 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   }
 
   // ══════════════════════════════════════════════
-  // STEP 12: Hex Claiming (hold 1 Major Turn = 8 minor turns)
+  // STEP 12: Hex Claiming & Conquering (explicit orders)
   // ══════════════════════════════════════════════
   const hexesForClaiming = await db.select().from(schema.gameHexes)
     .where(eq(schema.gameHexes.gameId, gameId));
+  const allArmiesForClaiming = await db.select().from(schema.armies)
+    .where(eq(schema.armies.gameId, gameId));
+  const allSettlementsForClaiming = await db.select().from(schema.settlements)
+    .where(eq(schema.settlements.gameId, gameId));
 
-  for (const hex of hexesForClaiming) {
-    if (hex.claimStartedTurn && !hex.ownerId) {
-      // Check if 8 turns have passed (1 Major Turn)
-      if (turnNumber - hex.claimStartedTurn >= 8) {
-        // Find army that started the claim — check if any army from the claimant is still there
-        const armiesOnHex = await db.select().from(schema.armies)
-          .where(and(
-            eq(schema.armies.gameId, gameId),
-            eq(schema.armies.hexQ, hex.q),
-            eq(schema.armies.hexR, hex.r),
-          ));
+  // 12a: Process new ClaimHexOrder from each player
+  for (const player of activePlayers) {
+    const orders = ordersByPlayer.get(player.id) ?? emptyOrders(player.taxRate as TaxRate);
 
-        if (armiesOnHex.length > 0) {
-          const claimingArmy = armiesOnHex[0];
-          await db.update(schema.gameHexes)
-            .set({ ownerId: claimingArmy.ownerId, claimStartedTurn: null })
-            .where(eq(schema.gameHexes.id, hex.id));
+    for (const claim of (orders.claimHexes ?? [])) {
+      const hex = hexesForClaiming.find(h => h.q === claim.hexQ && h.r === claim.hexR);
+      if (!hex) continue;
 
-          const claimingPlayer = activePlayers.find(p => p.id === claimingArmy.ownerId);
-          events.push({
-            type: 'hex_claimed',
-            description: `${claimingPlayer?.countryName ?? 'Unknown'} claimed hex (${hex.q},${hex.r})`,
-            playerIds: [claimingArmy.ownerId],
-          });
-        }
+      // Must have army on hex
+      const armyOnHex = allArmiesForClaiming.find(
+        a => a.hexQ === claim.hexQ && a.hexR === claim.hexR && a.ownerId === player.id
+      );
+      if (!armyOnHex) continue;
+
+      // Skip if already being claimed by this player
+      if (hex.claimingPlayerId === player.id && hex.claimStartedTurn != null) continue;
+
+      // Skip if already owned by this player
+      if (hex.ownerId === player.id) continue;
+
+      const isEnemyHex = hex.ownerId != null && hex.ownerId !== player.id;
+
+      if (!isEnemyHex) {
+        // Claiming unclaimed hex — check radius from settlement
+        const playerSettlements = allSettlementsForClaiming.filter(s => s.ownerId === player.id);
+        const withinRadius = playerSettlements.some(s =>
+          hexDistance({ q: s.hexQ, r: s.hexR }, { q: claim.hexQ, r: claim.hexR }) <= CLAIM_RADIUS
+        );
+        if (!withinRadius) continue;
+
+        // Calculate and deduct scaling gold cost
+        const playerHexCount = hexesForClaiming.filter(h => h.ownerId === player.id).length;
+        const cost = claimCost(playerHexCount);
+        const playerRow = updatedPlayers.find(p => p.id === player.id);
+        if (!playerRow || playerRow.gold < cost) continue;
+
+        await db.update(schema.players)
+          .set({ gold: playerRow.gold - cost })
+          .where(eq(schema.players.id, player.id));
+        playerRow.gold -= cost;
       }
+      // Enemy hex: no radius check, no gold cost
+
+      // Start the claim
+      await db.update(schema.gameHexes)
+        .set({ claimStartedTurn: turnNumber, claimingPlayerId: player.id })
+        .where(eq(schema.gameHexes.id, hex.id));
+
+      // Update local cache
+      hex.claimStartedTurn = turnNumber;
+      hex.claimingPlayerId = player.id;
+
+      events.push({
+        type: isEnemyHex ? 'hex_conquest_started' : 'hex_claim_started',
+        description: `${player.countryName} began ${isEnemyHex ? 'conquering' : 'claiming'} hex (${claim.hexQ},${claim.hexR})`,
+        playerIds: [player.id],
+      });
+    }
+  }
+
+  // 12b: Progress existing claims
+  for (const hex of hexesForClaiming) {
+    if (hex.claimStartedTurn == null || hex.claimingPlayerId == null) continue;
+
+    // Check if claiming player still has an army on the hex
+    const armyPresent = allArmiesForClaiming.some(
+      a => a.hexQ === hex.q && a.hexR === hex.r && a.ownerId === hex.claimingPlayerId
+    );
+
+    if (!armyPresent) {
+      // Abandon claim
+      await db.update(schema.gameHexes)
+        .set({ claimStartedTurn: null, claimingPlayerId: null })
+        .where(eq(schema.gameHexes.id, hex.id));
+
+      const claimPlayer = activePlayers.find(p => p.id === hex.claimingPlayerId);
+      events.push({
+        type: 'hex_claim_abandoned',
+        description: `${claimPlayer?.countryName ?? 'Unknown'}'s claim on hex (${hex.q},${hex.r}) was abandoned`,
+        playerIds: [hex.claimingPlayerId],
+      });
+      continue;
     }
 
-    // Start claiming if army is on unclaimed hex
-    if (!hex.ownerId && !hex.claimStartedTurn) {
-      const armiesOnHex = await db.select().from(schema.armies)
-        .where(and(
-          eq(schema.armies.gameId, gameId),
-          eq(schema.armies.hexQ, hex.q),
-          eq(schema.armies.hexR, hex.r),
-        ));
+    const isEnemyHex = hex.ownerId != null && hex.ownerId !== hex.claimingPlayerId;
+    const duration = isEnemyHex ? CLAIM_DURATION_ENEMY : CLAIM_DURATION_UNCLAIMED;
 
-      if (armiesOnHex.length > 0) {
-        await db.update(schema.gameHexes)
-          .set({ claimStartedTurn: turnNumber })
-          .where(eq(schema.gameHexes.id, hex.id));
-      }
+    if (turnNumber - hex.claimStartedTurn >= duration) {
+      // Claim/conquest complete
+      await db.update(schema.gameHexes)
+        .set({ ownerId: hex.claimingPlayerId, claimStartedTurn: null, claimingPlayerId: null })
+        .where(eq(schema.gameHexes.id, hex.id));
+
+      const claimPlayer = activePlayers.find(p => p.id === hex.claimingPlayerId);
+      events.push({
+        type: isEnemyHex ? 'hex_conquered' : 'hex_claimed',
+        description: `${claimPlayer?.countryName ?? 'Unknown'} ${isEnemyHex ? 'conquered' : 'claimed'} hex (${hex.q},${hex.r})`,
+        playerIds: isEnemyHex ? [hex.claimingPlayerId, hex.ownerId!] : [hex.claimingPlayerId],
+      });
+    }
+  }
+
+  // 12c: Process terrain conversions
+  for (const hex of hexesForClaiming) {
+    if (hex.conversionStartedTurn == null || !hex.conversionType) continue;
+
+    if (hex.conversionType === 'farmland' && turnNumber - hex.conversionStartedTurn >= 4) {
+      const newResources = [...((hex.resources ?? []) as string[])];
+      if (!newResources.includes('grain')) newResources.push('grain');
+
+      await db.update(schema.gameHexes)
+        .set({
+          terrain: 'farmland',
+          resources: newResources,
+          conversionStartedTurn: null,
+          conversionType: null,
+        })
+        .where(eq(schema.gameHexes.id, hex.id));
+
+      const owner = activePlayers.find(p => p.id === hex.ownerId);
+      events.push({
+        type: 'terrain_converted',
+        description: `Hex (${hex.q},${hex.r}) has been converted to farmland${owner ? ` by ${owner.countryName}` : ''}`,
+        playerIds: hex.ownerId ? [hex.ownerId] : [],
+      });
     }
   }
 

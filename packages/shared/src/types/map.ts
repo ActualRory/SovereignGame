@@ -18,6 +18,7 @@ export function parseHexKey(key: string): HexCoord {
 
 export type TerrainType =
   | 'plains'
+  | 'farmland'
   | 'hills'
   | 'mountains'
   | 'forest'
@@ -101,7 +102,13 @@ export interface GameHex {
   riverEdges: HexDirection[];
   ownerId: string | null;
   claimStartedTurn: number | null;
+  /** The player who initiated the claim (may differ from ownerId during conquest). */
+  claimingPlayerId: string | null;
   settlementId: string | null;
+  /** Turn when terrain conversion started (e.g. plains → farmland). */
+  conversionStartedTurn: number | null;
+  /** Type of conversion in progress (e.g. 'farmland'). */
+  conversionType: string | null;
   /**
    * The mount breed native to this hex, assigned at map generation.
    * Horses and gryphons drafted from this hex inherit this breed.

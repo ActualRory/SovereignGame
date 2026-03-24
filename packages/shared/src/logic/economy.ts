@@ -34,6 +34,7 @@ export function calculateSettlementProduction(
   hexResources: ResourceType[],
   hexStorage: Partial<Record<ResourceType, number>>,
   season: Season,
+  hexTerrain?: string,
 ): SettlementProduction {
   const produced: Partial<Record<ResourceType, number>> = {};
   const consumed: Partial<Record<ResourceType, number>> = {};
@@ -76,6 +77,11 @@ export function calculateSettlementProduction(
       // Calculate output scaled by population
       for (const [resource, baseAmount] of Object.entries(def.output)) {
         let amount = Math.floor((baseAmount ?? 0) * popScale);
+
+        // Farmland bonus: 1.5× output for farms on farmland terrain
+        if (building.type === 'farm' && hexTerrain === 'farmland') {
+          amount = Math.floor(amount * 1.5);
+        }
 
         // Seasonal modifiers for farms
         if (building.type === 'farm') {

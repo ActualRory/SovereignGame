@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useStore } from '../../store/index.js';
-import { TERRAIN, BUILDINGS, COST_TIERS, type BuildingType, type TerrainType } from '@kingdoms/shared';
+import { TERRAIN, BUILDINGS, COST_TIERS, hexNeighbors, hexDistance, claimCost, CLAIM_RADIUS, CLAIM_DURATION_UNCLAIMED, CLAIM_DURATION_ENEMY, SETTLEMENT_TIERS, type BuildingType, type TerrainType } from '@kingdoms/shared';
 import { Tooltip } from '../shared/Tooltip.js';
 
 /**
@@ -23,6 +23,15 @@ export function HexDetailPanel() {
   const selectedArmyId = useStore(s => s.selectedArmyId);
   const setGameState = useStore(s => s.setGameState);
   const setIsSelectingMoveTarget = useStore(s => s.setIsSelectingMoveTarget);
+  const game = useStore(s => s.game) as any;
+  const pendingOrders = useStore(s => s.pendingOrders);
+  const addClaimHex = useStore(s => s.addClaimHex);
+  const removeClaimHex = useStore(s => s.removeClaimHex);
+  const addNewSettlement = useStore(s => s.addNewSettlement);
+  const removeNewSettlement = useStore(s => s.removeNewSettlement);
+  const addFarmlandConversion = useStore(s => s.addFarmlandConversion);
+  const removeFarmlandConversion = useStore(s => s.removeFarmlandConversion);
+  const techProgress = useStore(s => s.techProgress) as any[];
 
   // Use detailPanelHex if set, otherwise fall back to selectedHex (for backwards compat)
   const targetHex = detailPanelHex ?? selectedHex;
@@ -256,6 +265,268 @@ export function HexDetailPanel() {
           })}
         </div>
       )}
+
+      {/* ── Claim Progress ── */}
+      {hex.claimStartedTurn != null && hex.claimingPlayerId && (() => {
+        const isEnemyHex = hex.ownerId != null && hex.ownerId !== hex.claimingPlayerId;
+        const duration = isEnemyHex ? CLAIM_DURATION_ENEMY : CLAIM_DURATION_UNCLAIMED;
+        const elapsed = (game?.currentTurn ?? 0) - hex.claimStartedTurn;
+        const progress = Math.min(1, elapsed / duration);
+        const claimPlayer = players.find((p: any) => p.id === hex.claimingPlayerId);
+        const isOwnClaim = hex.claimingPlayerId === playerId;
+        const armyPresent = armies.some((a: any) => a.hexQ === hex.q && a.hexR === hex.r && a.ownerId === hex.claimingPlayerId);
+
+        return (
+          <div style={{ marginBottom: 12, padding: '8px 10px', border: '1px solid var(--border-dark)', borderRadius: 6, background: 'var(--bg-inset)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+              {isEnemyHex ? 'Conquering' : 'Claiming'} — {claimPlayer ? (claimPlayer as any).countryName : 'Unknown'}
+            </div>
+            <div style={{ background: 'var(--bg-dark)', borderRadius: 4, height: 8, overflow: 'hidden', marginBottom: 4 }}>
+              <div style={{ width: `${progress * 100}%`, height: '100%', background: 'var(--accent-gold)', borderRadius: 4, transition: 'width 0.3s' }} />
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {elapsed}/{duration} turns
+              {!armyPresent && <span style={{ color: 'var(--accent-red)', marginLeft: 8 }}>No army — claim will be abandoned</span>}
+            </div>
+            {isOwnClaim && (
+              <button
+                className="btn btn-secondary"
+                style={{ marginTop: 4, padding: '2px 8px', fontSize: 11 }}
+                onClick={() => removeClaimHex(hex.q, hex.r)}
+              >
+                Cancel Claim
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── Claim Hex Button ── */}
+      {isOwn ? null : (() => {
+        const hasArmyOnHex = armies.some((a: any) => a.hexQ === hex.q && a.hexR === hex.r && a.ownerId === playerId);
+        if (!hasArmyOnHex) return null;
+        if (hex.claimingPlayerId === playerId) return null; // already claiming
+        if (hex.ownerId === playerId) return null; // already own
+
+        const isEnemyHex = hex.ownerId != null && hex.ownerId !== playerId;
+        const isPendingClaim = pendingOrders.claimHexes.some((c: any) => c.hexQ === hex.q && c.hexR === hex.r);
+
+        if (!isEnemyHex) {
+          // Check within radius of a settlement
+          const playerSettlements = settlements.filter((s: any) => s.ownerId === playerId);
+          const withinRadius = playerSettlements.some((s: any) =>
+            hexDistance({ q: s.hexQ, r: s.hexR }, { q: hex.q, r: hex.r }) <= CLAIM_RADIUS
+          );
+          if (!withinRadius) return (
+            <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+              Too far from any settlement to claim (max {CLAIM_RADIUS} hexes)
+            </div>
+          );
+        }
+
+        const playerHexCount = hexes.filter((h: any) => h.ownerId === playerId).length;
+        const cost = isEnemyHex ? 0 : claimCost(playerHexCount);
+
+        if (isPendingClaim) {
+          return (
+            <div style={{ marginBottom: 12 }}>
+              <span className="resource-tag" style={{ borderColor: 'var(--accent-green)', color: 'var(--accent-green)' }}>
+                {isEnemyHex ? 'Conquest' : 'Claim'} queued
+                <button
+                  onClick={() => removeClaimHex(hex.q, hex.r)}
+                  style={{ marginLeft: 4, background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: 12, padding: 0, fontWeight: 600 }}
+                >x</button>
+              </span>
+            </div>
+          );
+        }
+
+        return (
+          <div style={{ marginBottom: 12 }}>
+            <button
+              className="btn btn-primary"
+              style={{ padding: '4px 12px', fontSize: 12 }}
+              onClick={() => addClaimHex(hex.q, hex.r)}
+            >
+              {isEnemyHex ? 'Conquer Hex' : 'Claim Hex'}
+            </button>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
+              {cost > 0 ? `${cost} gp · ${isEnemyHex ? CLAIM_DURATION_ENEMY : CLAIM_DURATION_UNCLAIMED} turns` : `Free · ${CLAIM_DURATION_ENEMY} turns`}
+            </span>
+          </div>
+        );
+      })()}
+
+      {/* ── Found Settlement ── */}
+      {isOwn && !hex.settlementId && (() => {
+        const neighbors = hexNeighbors({ q: hex.q, r: hex.r });
+        const hasAdjacentSettlement = neighbors.some((n: any) =>
+          hexes.some((h: any) => h.q === n.q && h.r === n.r && h.settlementId != null)
+        );
+        if (hasAdjacentSettlement) return null;
+
+        const pendingFoundHere = pendingOrders.newSettlements.find((ns: any) => ns.hexQ === hex.q && ns.hexR === hex.r);
+
+        if (pendingFoundHere) {
+          return (
+            <div style={{ marginBottom: 12, padding: '8px 10px', border: '1px solid var(--accent-green)', borderRadius: 6, background: 'var(--bg-inset)' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                Settlement founding queued: {pendingFoundHere.name}
+              </div>
+              <button
+                className="btn btn-secondary"
+                style={{ padding: '2px 8px', fontSize: 11 }}
+                onClick={() => removeNewSettlement(hex.q, hex.r)}
+              >
+                Cancel
+              </button>
+            </div>
+          );
+        }
+
+        return <FoundSettlementInline hexQ={hex.q} hexR={hex.r} addNewSettlement={addNewSettlement} playerGold={(player as any)?.gold ?? 0} />;
+      })()}
+
+      {/* ── Convert to Farmland ── */}
+      {isOwn && hex.terrain === 'plains' && !hex.conversionStartedTurn && (() => {
+        // Check if adjacent to or has a settlement
+        const neighbors = hexNeighbors({ q: hex.q, r: hex.r });
+        const nearSettlement = hex.settlementId ||
+          neighbors.some((n: any) => hexes.some((h: any) => h.q === n.q && h.r === n.r && h.settlementId != null && h.ownerId === playerId));
+        if (!nearSettlement) return null;
+
+        // Check Agriculture tech
+        const hasAgri = techProgress?.some((tp: any) => tp.tech === 'agriculture' && tp.isResearched);
+        if (!hasAgri) return (
+          <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            Research Agriculture to convert to farmland
+          </div>
+        );
+
+        const pendingConv = pendingOrders.farmlandConversions.some((f: any) => f.hexQ === hex.q && f.hexR === hex.r);
+        if (pendingConv) {
+          return (
+            <div style={{ marginBottom: 12 }}>
+              <span className="resource-tag" style={{ borderColor: 'var(--accent-green)', color: 'var(--accent-green)' }}>
+                Farmland conversion queued
+                <button
+                  onClick={() => removeFarmlandConversion(hex.q, hex.r)}
+                  style={{ marginLeft: 4, background: 'none', border: 'none', color: 'var(--accent-red)', cursor: 'pointer', fontSize: 12, padding: 0, fontWeight: 600 }}
+                >x</button>
+              </span>
+            </div>
+          );
+        }
+
+        return (
+          <div style={{ marginBottom: 12 }}>
+            <button
+              className="btn btn-primary"
+              style={{ padding: '4px 12px', fontSize: 12 }}
+              onClick={() => addFarmlandConversion(hex.q, hex.r)}
+            >
+              Convert to Farmland
+            </button>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>500 gp + 10 timber · 4 turns</span>
+          </div>
+        );
+      })()}
+
+      {/* ── Farmland Conversion Progress ── */}
+      {hex.conversionStartedTurn != null && hex.conversionType && (() => {
+        const elapsed = (game?.currentTurn ?? 0) - hex.conversionStartedTurn;
+        const duration = 4;
+        const progress = Math.min(1, elapsed / duration);
+        return (
+          <div style={{ marginBottom: 12, padding: '8px 10px', border: '1px solid var(--border-dark)', borderRadius: 6, background: 'var(--bg-inset)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+              Converting to {formatName(hex.conversionType)}
+            </div>
+            <div style={{ background: 'var(--bg-dark)', borderRadius: 4, height: 8, overflow: 'hidden', marginBottom: 4 }}>
+              <div style={{ width: `${progress * 100}%`, height: '100%', background: 'var(--accent-green)', borderRadius: 4, transition: 'width 0.3s' }} />
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{elapsed}/{duration} turns</div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+/* ─── Found Settlement Inline ─── */
+
+function FoundSettlementInline({ hexQ, hexR, addNewSettlement, playerGold }: {
+  hexQ: number; hexR: number;
+  addNewSettlement: (order: { hexQ: number; hexR: number; name: string }) => void;
+  playerGold: number;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState('');
+  const hamletCost = SETTLEMENT_TIERS.hamlet.upgradeCost;
+
+  if (!showForm) {
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <button
+          className="btn btn-primary"
+          style={{ padding: '4px 12px', fontSize: 12 }}
+          onClick={() => setShowForm(true)}
+        >
+          Found Settlement
+        </button>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
+          {hamletCost.gold} gp + {Object.entries(hamletCost.resources).map(([r, n]) => `${n} ${formatName(r)}`).join(', ')}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 12, padding: '8px 10px', border: '1px solid var(--border-dark)', borderRadius: 6, background: 'var(--bg-inset)' }}>
+      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Found Settlement</div>
+      <input
+        className="hex-name-input"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && name.trim()) {
+            addNewSettlement({ hexQ, hexR, name: name.trim() });
+            setShowForm(false);
+            setName('');
+          }
+          if (e.key === 'Escape') { setShowForm(false); setName(''); }
+        }}
+        placeholder="Settlement name..."
+        autoFocus
+        style={{ marginBottom: 6 }}
+      />
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+        Cost: {hamletCost.gold} gp + {Object.entries(hamletCost.resources).map(([r, n]) => `${n} ${formatName(r)}`).join(', ')}
+        {playerGold < hamletCost.gold && <span style={{ color: 'var(--accent-red)', marginLeft: 8 }}>Not enough gold</span>}
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          className="btn btn-primary"
+          style={{ padding: '3px 10px', fontSize: 11 }}
+          disabled={!name.trim() || playerGold < hamletCost.gold}
+          onClick={() => {
+            if (name.trim()) {
+              addNewSettlement({ hexQ, hexR, name: name.trim() });
+              setShowForm(false);
+              setName('');
+            }
+          }}
+        >
+          Found
+        </button>
+        <button
+          className="btn btn-secondary"
+          style={{ padding: '3px 10px', fontSize: 11 }}
+          onClick={() => { setShowForm(false); setName(''); }}
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

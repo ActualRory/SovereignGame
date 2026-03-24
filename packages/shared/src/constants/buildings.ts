@@ -47,7 +47,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   // ── Resource Extraction ──
   farm: {
     category: 'extraction', costTier: 'basic', minSettlement: 'hamlet',
-    materials: ['timber'], terrain: ['plains', 'forest'], usesSlot: true,
+    materials: ['timber'], terrain: ['plains', 'farmland', 'forest'], usesSlot: true,
     output: { food: 10 },
     effect: 'Produces food from grain/cattle terrain',
   },

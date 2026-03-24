@@ -15,6 +15,7 @@ const TABS: { id: TabId; label: string }[] = [
 export function BottomBar() {
   const activeTab = useStore(s => s.activeTab);
   const setActiveTab = useStore(s => s.setActiveTab);
+  const setSelectedSettlementId = useStore(s => s.setSelectedSettlementId);
 
   return (
     <div className="bottom-bar">
@@ -22,7 +23,10 @@ export function BottomBar() {
         <button
           key={tab.id}
           className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-          onClick={() => setActiveTab(tab.id)}
+          onClick={() => {
+            setSelectedSettlementId(null);
+            setActiveTab(tab.id);
+          }}
         >
           {tab.label}
         </button>

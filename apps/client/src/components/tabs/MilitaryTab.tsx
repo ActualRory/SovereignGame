@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useStore } from '../../store/index.js';
 import {
@@ -56,7 +56,9 @@ export function MilitaryTab() {
   const techProgress = useStore(s => s.techProgress) as Array<{ tech: string; isResearched: boolean }>;
   const researchedTechs = new Set(techProgress.filter(t => t.isResearched).map(t => t.tech));
 
-  const [activeTab, setActiveTab] = useState<'armies' | 'orbat' | 'designer' | 'weapons' | 'production'>('armies');
+  const setSelectedSettlementId = useStore(s => s.setSelectedSettlementId);
+
+  const [activeTab, setActiveTab] = useState<'armies' | 'stockpile' | 'orbat' | 'designer' | 'weapons' | 'production'>('armies');
 
   if (!player) return <div><h2>Military</h2><p>Loading...</p></div>;
 
@@ -91,7 +93,7 @@ export function MilitaryTab() {
 
       {/* Sub-tabs */}
       <div style={{ display: 'flex', gap: 4, marginTop: 16, marginBottom: 12, borderBottom: '1px solid var(--border-color)', paddingBottom: 4 }}>
-        {(['armies', 'orbat', 'designer', 'weapons', 'production'] as const).map(tab => (
+        {(['armies', 'stockpile', 'orbat', 'designer', 'weapons', 'production'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -106,7 +108,7 @@ export function MilitaryTab() {
               fontFamily: 'var(--font-body)',
             }}
           >
-            {tab === 'armies' ? 'Armies' : tab === 'orbat' ? 'ORBAT' : tab === 'designer' ? 'Unit Designer' : tab === 'weapons' ? 'Weapon Designer' : 'Production'}
+            {{ armies: 'Armies', stockpile: 'Stockpile', orbat: 'ORBAT', designer: 'Unit Designer', weapons: 'Weapon Designer', production: 'Production' }[tab]}
           </button>
         ))}
       </div>
@@ -151,7 +153,16 @@ export function MilitaryTab() {
             const armiesHere = myArmies.filter((a: any) => a.hexQ === s.hexQ && a.hexR === s.hexR);
             if (armiesHere.length === 0) return null;
             const hasBarracks = s.buildings?.some((b: any) => b.type === 'barracks' && !b.isConstructing);
-            if (!hasBarracks) return null;
+            if (!hasBarracks) {
+              return (
+                <div key={s.id} className="settlement-card" style={{ marginTop: 8 }}>
+                  <strong>{s.name}</strong>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, fontStyle: 'italic' }}>
+                    Requires a completed Barracks to recruit here.
+                  </p>
+                </div>
+              );
+            }
             return (
               <RecruitPanel
                 key={s.id}
@@ -159,6 +170,8 @@ export function MilitaryTab() {
                 armies={armiesHere}
                 templates={myTemplates}
                 weaponDesigns={myDesigns}
+                pendingOrders={pendingOrders}
+                playerGold={(player?.gold as number) ?? 0}
                 onRecruit={addRecruitment}
               />
             );
@@ -225,6 +238,15 @@ export function MilitaryTab() {
           weaponDesigns={myDesigns}
           pendingOrders={pendingOrders}
           setPendingOrders={setPendingOrders}
+        />
+      )}
+
+      {/* Stockpile Tab */}
+      {activeTab === 'stockpile' && (
+        <StockpileTab
+          settlements={mySettlements}
+          pendingOrders={pendingOrders}
+          onSettlementClick={(id: string) => setSelectedSettlementId(id)}
         />
       )}
     </div>
@@ -1299,47 +1321,293 @@ function UnitRow({ unit, slug, armyId, templates, weaponDesigns }: {
   );
 }
 
-// ─── Recruit Panel ─────────────────────────────────────────────────────────
+// ─── Stockpile Tab ────────────────────────────────────────────────────────
 
-function RecruitPanel({ settlement, armies, templates, weaponDesigns, onRecruit }: {
+const WEAPON_KEYS = new Set(Object.keys(WEAPONS));
+const SHIELD_KEYS = new Set(Object.keys(SHIELDS));
+const ARMOUR_KEYS = new Set(Object.keys(ARMOUR_TYPES));
+const MOUNT_STORAGE_KEYS = new Set(['horses', 'griffins', 'demigryphs']);
+
+function StockpileTab({ settlements, pendingOrders, onSettlementClick }: {
+  settlements: any[];
+  pendingOrders: any;
+  onSettlementClick: (id: string) => void;
+}) {
+  // Aggregate across all settlements
+  const totals = {
+    population: 0,
+    popCap: 0,
+    draftedRecruits: 0,
+    maxDraftable: 0,
+    draftedHorses: 0,
+    draftedGryphons: 0,
+    draftedDemigryphs: 0,
+  };
+  const aggregateStorage: Record<string, number> = {};
+  const perSettlement: Record<string, Record<string, number>> = {};
+
+  for (const s of settlements) {
+    totals.population += s.population ?? 0;
+    totals.popCap += s.popCap ?? 0;
+    totals.draftedRecruits += s.draftedRecruits ?? 0;
+    totals.maxDraftable += Math.floor((s.popCap ?? 0) * 0.2);
+    totals.draftedHorses += s.draftedHorses ?? 0;
+    totals.draftedGryphons += s.draftedGryphons ?? 0;
+    totals.draftedDemigryphs += s.draftedDemigryphs ?? 0;
+
+    const storage = (s.storage ?? {}) as Record<string, number>;
+    perSettlement[s.id] = storage;
+    for (const [key, val] of Object.entries(storage)) {
+      if (val > 0) aggregateStorage[key] = (aggregateStorage[key] ?? 0) + val;
+    }
+  }
+
+  // Pending draft deltas
+  const pendingDraftDelta = (pendingOrders.draftRecruits ?? []).reduce((s: number, o: any) => s + o.amount, 0)
+    - (pendingOrders.dismissRecruits ?? []).reduce((s: number, o: any) => s + o.amount, 0);
+
+  // Categorize storage (mounts excluded — shown in Mounts section above)
+  const weapons: [string, number][] = [];
+  const shields: [string, number][] = [];
+  const armour: [string, number][] = [];
+  const materials: [string, number][] = [];
+
+  for (const [key, val] of Object.entries(aggregateStorage)) {
+    if (WEAPON_KEYS.has(key)) weapons.push([key, val]);
+    else if (SHIELD_KEYS.has(key)) shields.push([key, val]);
+    else if (ARMOUR_KEYS.has(key)) armour.push([key, val]);
+    else if (!MOUNT_STORAGE_KEYS.has(key)) materials.push([key, val]);
+  }
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      {/* ── Manpower ── */}
+      <h3>Manpower</h3>
+      <div className="stat-grid" style={{ marginBottom: 16 }}>
+        <div className="stat-box">
+          <span className="stat-label">Total Population</span>
+          <span className="stat-detail">{totals.population.toLocaleString()}</span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-label">Total Drafted</span>
+          <span className="stat-detail">
+            {totals.draftedRecruits.toLocaleString()}
+            {pendingDraftDelta !== 0 && (
+              <span style={{ color: pendingDraftDelta > 0 ? 'var(--accent-green)' : 'var(--accent-red)', fontSize: 11, marginLeft: 4 }}>
+                {pendingDraftDelta > 0 ? '+' : ''}{pendingDraftDelta}
+              </span>
+            )}
+          </span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-label">Max Draftable</span>
+          <span className="stat-detail">{totals.maxDraftable.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* ── Mounts ── */}
+      {(totals.draftedHorses > 0 || totals.draftedGryphons > 0 || totals.draftedDemigryphs > 0 ||
+        (aggregateStorage.horses ?? 0) > 0 || (aggregateStorage.griffins ?? 0) > 0 || (aggregateStorage.demigryphs ?? 0) > 0) && (
+        <>
+          <h3>Mounts</h3>
+          <div className="stat-grid" style={{ marginBottom: 16 }}>
+            {[
+              { label: 'Horses', storage: aggregateStorage.horses ?? 0, drafted: totals.draftedHorses },
+              { label: 'Gryphons', storage: aggregateStorage.griffins ?? 0, drafted: totals.draftedGryphons },
+              { label: 'Demigryphs', storage: aggregateStorage.demigryphs ?? 0, drafted: totals.draftedDemigryphs },
+            ].filter(m => m.storage > 0 || m.drafted > 0).map(m => (
+              <div className="stat-box" key={m.label}>
+                <span className="stat-label">{m.label}</span>
+                <span className="stat-detail">{m.storage} in storage · {m.drafted} drafted</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Weapons ── */}
+      {weapons.length > 0 && (
+        <>
+          <h3>Weapons</h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+            {weapons.sort((a, b) => b[1] - a[1]).map(([key, val]) => (
+              <Tooltip key={key} content={
+                <div style={{ fontSize: 12 }}>
+                  {settlements.filter(s => (perSettlement[s.id]?.[key] ?? 0) > 0).map(s => (
+                    <div key={s.id}>{s.name}: {perSettlement[s.id][key]}</div>
+                  ))}
+                </div>
+              }>
+                <span className="resource-tag">{fmt(key)} <strong>{val.toLocaleString()}</strong></span>
+              </Tooltip>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Shields ── */}
+      {shields.length > 0 && (
+        <>
+          <h3>Shields</h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+            {shields.sort((a, b) => b[1] - a[1]).map(([key, val]) => (
+              <Tooltip key={key} content={
+                <div style={{ fontSize: 12 }}>
+                  {settlements.filter(s => (perSettlement[s.id]?.[key] ?? 0) > 0).map(s => (
+                    <div key={s.id}>{s.name}: {perSettlement[s.id][key]}</div>
+                  ))}
+                </div>
+              }>
+                <span className="resource-tag">{fmt(key)} <strong>{val.toLocaleString()}</strong></span>
+              </Tooltip>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Armour ── */}
+      {armour.length > 0 && (
+        <>
+          <h3>Armour</h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+            {armour.sort((a, b) => b[1] - a[1]).map(([key, val]) => (
+              <Tooltip key={key} content={
+                <div style={{ fontSize: 12 }}>
+                  {settlements.filter(s => (perSettlement[s.id]?.[key] ?? 0) > 0).map(s => (
+                    <div key={s.id}>{s.name}: {perSettlement[s.id][key]}</div>
+                  ))}
+                </div>
+              }>
+                <span className="resource-tag">{fmt(key)} <strong>{val.toLocaleString()}</strong></span>
+              </Tooltip>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Raw Materials ── */}
+      {materials.length > 0 && (
+        <>
+          <h3>Materials</h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+            {materials.sort((a, b) => b[1] - a[1]).map(([key, val]) => (
+              <Tooltip key={key} content={
+                <div style={{ fontSize: 12 }}>
+                  {settlements.filter(s => (perSettlement[s.id]?.[key] ?? 0) > 0).map(s => (
+                    <div key={s.id}>{s.name}: {perSettlement[s.id][key]}</div>
+                  ))}
+                </div>
+              }>
+                <span className="resource-tag">{fmt(key)} <strong>{val.toLocaleString()}</strong></span>
+              </Tooltip>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Per-Settlement Breakdown ── */}
+      <h3>By Settlement</h3>
+      {settlements.map((s: any) => {
+        const storage = (s.storage ?? {}) as Record<string, number>;
+        const itemCount = Object.values(storage).reduce((a, b) => a + b, 0);
+        return (
+          <div key={s.id} className="settlement-card" style={{ marginTop: 4, cursor: 'pointer' }}
+            onClick={() => onSettlementClick(s.id)}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <strong>{s.name}</strong>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6, textTransform: 'capitalize' }}>{s.tier}</span>
+              </div>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Pop {s.population?.toLocaleString()} · Drafted {s.draftedRecruits ?? 0} · {itemCount.toLocaleString()} items
+              </span>
+            </div>
+          </div>
+        );
+      })}
+
+      {settlements.length === 0 && (
+        <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No settlements under your control.</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Recruit Panel (Enhanced) ──────────────────────────────────────────────
+
+interface Deficit { label: string; required: number; available: number; isMet: boolean; }
+
+function computeRequirements(tmpl: UnitTemplate, settlement: any, pendingOrders: any, playerGold: number): Deficit[] {
+  const troops = tmpl.isMounted
+    ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON
+    : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
+  const storage = (settlement.storage ?? {}) as Record<string, number>;
+  const deficits: Deficit[] = [];
+
+  if (!tmpl.isIrregular) {
+    // Drafted recruits (including pending drafts/dismissals for this settlement)
+    const pendingDraft = (pendingOrders.draftRecruits ?? [])
+      .filter((o: any) => o.settlementId === settlement.id)
+      .reduce((s: number, o: any) => s + o.amount, 0);
+    const pendingDismiss = (pendingOrders.dismissRecruits ?? [])
+      .filter((o: any) => o.settlementId === settlement.id)
+      .reduce((s: number, o: any) => s + o.amount, 0);
+    const availableRecruits = (settlement.draftedRecruits ?? 0) + pendingDraft - pendingDismiss;
+    deficits.push({ label: 'Drafted Recruits', required: troops, available: Math.max(0, availableRecruits), isMet: availableRecruits >= troops });
+
+    // Primary weapon
+    if (tmpl.primary) {
+      const avail = storage[tmpl.primary] ?? 0;
+      deficits.push({ label: fmt(tmpl.primary), required: troops, available: avail, isMet: avail >= troops });
+    }
+    // Secondary weapon
+    if (tmpl.secondary) {
+      const avail = storage[tmpl.secondary] ?? 0;
+      deficits.push({ label: fmt(tmpl.secondary), required: troops, available: avail, isMet: avail >= troops });
+    }
+    // Sidearm
+    if (tmpl.sidearm) {
+      const avail = storage[tmpl.sidearm] ?? 0;
+      deficits.push({ label: fmt(tmpl.sidearm), required: troops, available: avail, isMet: avail >= troops });
+    }
+    // Armour
+    if (tmpl.armour) {
+      const avail = storage[tmpl.armour] ?? 0;
+      deficits.push({ label: fmt(tmpl.armour), required: troops, available: avail, isMet: avail >= troops });
+    }
+    // Mounts
+    if (tmpl.isMounted && tmpl.mount) {
+      const mountStorageKey = tmpl.mount === 'horse' ? 'draftedHorses' : tmpl.mount === 'gryphon' ? 'draftedGryphons' : 'draftedDemigryphs';
+      const avail = settlement[mountStorageKey] ?? 0;
+      deficits.push({ label: fmt(tmpl.mount) + 's', required: troops, available: avail, isMet: avail >= troops });
+    }
+  }
+
+  // Gold cost: 200 base + 50 per company/squadron
+  const goldCost = 200 + tmpl.companiesOrSquadrons * 50;
+  deficits.push({ label: 'Gold', required: goldCost, available: playerGold, isMet: playerGold >= goldCost });
+
+  return deficits;
+}
+
+function RecruitPanel({ settlement, armies, templates, weaponDesigns, pendingOrders, playerGold, onRecruit }: {
   settlement: any;
   armies: any[];
   templates: UnitTemplate[];
   weaponDesigns: WeaponDesign[];
+  pendingOrders: any;
+  playerGold: number;
   onRecruit: (order: RecruitFromTemplateOrder) => void;
 }) {
-  const [selectedTemplate, setSelectedTemplate] = useState<string>(templates[0]?.id ?? '');
   const [selectedArmy, setSelectedArmy] = useState<string>(armies[0]?.id ?? '');
-
-  const storage = (settlement.storage ?? {}) as Record<string, number>;
-  const availableTemplates = templates.filter(tmpl => {
-    if (tmpl.isIrregular) return true;
-    if (tmpl.primary && (storage[tmpl.primary] ?? 0) < 1) return false;
-    if (tmpl.sidearm && (storage[tmpl.sidearm] ?? 0) < 1) return false;
-    if (tmpl.armour && (storage[tmpl.armour] ?? 0) < 1) return false;
-    return true;
-  });
-
-  const selected = templates.find(t => t.id === selectedTemplate);
-  const selectedStats = selected ? computeUnitStats(selected, weaponDesigns) : null;
+  const [confirmModal, setConfirmModal] = useState<{ templateId: string; armyId: string; deficits: Deficit[] } | null>(null);
 
   if (templates.length === 0) {
     return (
       <div className="settlement-card" style={{ marginTop: 8 }}>
         <strong>{settlement.name}</strong>
         <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-          No unit templates. Create a template in the Unit Designer tab.
-        </p>
-      </div>
-    );
-  }
-
-  if (availableTemplates.length === 0) {
-    return (
-      <div className="settlement-card" style={{ marginTop: 8 }}>
-        <strong>{settlement.name}</strong>
-        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-          No equipment in storage for any template.
+          No unit templates. Create one in the Unit Designer tab.
         </p>
       </div>
     );
@@ -1347,39 +1615,107 @@ function RecruitPanel({ settlement, armies, templates, weaponDesigns, onRecruit 
 
   return (
     <div className="settlement-card" style={{ marginTop: 8 }}>
-      <strong>{settlement.name}</strong>
-      <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Tooltip content={selectedStats ? (
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>{selected?.name}</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-              {selected?.companiesOrSquadrons} {selected?.isMounted ? 'squadrons' : 'companies'}
-              {' · '}{selected ? (selected.isMounted ? selected.companiesOrSquadrons * MEN_PER_SQUADRON : selected.companiesOrSquadrons * MEN_PER_COMPANY) : 0} troops max
-            </div>
-            <StatsPreview stats={selectedStats} />
-          </div>
-        ) : <span>Select a template</span>}>
-          <select value={selectedTemplate} onChange={e => setSelectedTemplate(e.target.value)}
-            className="input" style={{ flex: 1, minWidth: 140, padding: '4px 8px' }}>
-            {availableTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
-        </Tooltip>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <strong>{settlement.name}</strong>
         <select value={selectedArmy} onChange={e => setSelectedArmy(e.target.value)}
-          className="input" style={{ flex: 1, minWidth: 120, padding: '4px 8px' }}>
+          className="input" style={{ minWidth: 120, padding: '4px 8px', fontSize: 12 }}>
           {armies.map((a: any) => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
-        <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: 13 }}
-          onClick={() => {
-            if (selectedArmy && selectedTemplate) {
-              onRecruit({ settlementId: settlement.id, armyId: selectedArmy, templateId: selectedTemplate });
-            }
+      </div>
+
+      {templates.map(tmpl => {
+        const stats = computeUnitStats(tmpl, weaponDesigns);
+        const troops = tmpl.isMounted
+          ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON
+          : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
+        const deficits = computeRequirements(tmpl, settlement, pendingOrders, playerGold);
+        const allMet = deficits.every(d => d.isMet);
+        const unitType = tmpl.isIrregular ? 'Irregular' : tmpl.isMounted ? 'Cavalry' : 'Infantry';
+
+        return (
+          <div key={tmpl.id} style={{
+            border: '1px solid var(--border-color)',
+            borderRadius: 6,
+            padding: '8px 12px',
+            marginBottom: 6,
+            background: 'var(--bg-surface)',
           }}>
-          Recruit
-        </button>
-      </div>
-      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-        Cost: 200g + equipment from storage
-      </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Tooltip content={<StatsPreview stats={stats} />}>
+                <span style={{ fontWeight: 600, fontSize: 14, cursor: 'help' }}>{tmpl.name}</span>
+              </Tooltip>
+              <button
+                className={`btn ${allMet ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ padding: '3px 10px', fontSize: 12 }}
+                onClick={() => {
+                  if (!selectedArmy) return;
+                  if (allMet) {
+                    onRecruit({ settlementId: settlement.id, armyId: selectedArmy, templateId: tmpl.id });
+                  } else {
+                    setConfirmModal({ templateId: tmpl.id, armyId: selectedArmy, deficits: deficits.filter(d => !d.isMet) });
+                  }
+                }}
+              >
+                Recruit
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+              {unitType} · {tmpl.companiesOrSquadrons} {tmpl.isMounted ? 'sqn' : 'cos'} · {troops} troops
+            </div>
+
+            {/* Requirements checklist */}
+            {!tmpl.isIrregular && (
+              <div className="requirement-grid">
+                {deficits.map((d, i) => (
+                  <React.Fragment key={i}>
+                    <span style={{ color: d.isMet ? 'var(--accent-green)' : 'var(--accent-red)', fontSize: 13 }}>
+                      {d.isMet ? '✓' : '✗'}
+                    </span>
+                    <span style={{ fontSize: 12 }}>{d.label}</span>
+                    <span style={{ fontSize: 12, color: d.isMet ? 'var(--text-muted)' : 'var(--accent-red)', textAlign: 'right' }}>
+                      {d.available.toLocaleString()}{d.label === 'Gold' ? 'g' : ''} / {d.required.toLocaleString()}{d.label === 'Gold' ? 'g' : ''}
+                    </span>
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+            {tmpl.isIrregular && (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Irregular — no equipment needed · Cost: {200 + tmpl.companiesOrSquadrons * 50}g
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Confirmation modal */}
+      {confirmModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setConfirmModal(null)}>
+          <div style={{
+            background: 'var(--bg-dark)', border: '1px solid var(--border-dark)',
+            borderRadius: 8, padding: 24, maxWidth: 380, width: '90%',
+          }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ marginBottom: 12, color: 'var(--accent-gold)' }}>Insufficient Resources</h3>
+            <p style={{ fontSize: 13, marginBottom: 12 }}>This settlement currently lacks:</p>
+            {confirmModal.deficits.map((d, i) => (
+              <div key={i} style={{ fontSize: 13, marginBottom: 4, color: 'var(--accent-red)' }}>
+                • {d.label}: need {d.required.toLocaleString()}{d.label === 'Gold' ? 'g' : ''}, have {d.available.toLocaleString()}{d.label === 'Gold' ? 'g' : ''}
+              </div>
+            ))}
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12, marginBottom: 16 }}>
+              The order will be queued but the server will skip this recruitment if still unmet at turn resolution.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => {
+                onRecruit({ settlementId: settlement.id, armyId: confirmModal.armyId, templateId: confirmModal.templateId });
+                setConfirmModal(null);
+              }}>Recruit Anyway</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

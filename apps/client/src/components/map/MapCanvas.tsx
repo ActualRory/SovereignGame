@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Application, Container, Graphics, Sprite, Text, TextStyle } from 'pixi.js';
 import { useStore } from '../../store/index.js';
 import {
@@ -28,6 +28,7 @@ export function MapCanvas() {
   // Layer refs for split static/dynamic rendering
   const staticLayersRef = useRef<Container | null>(null);
   const dynamicLayersRef = useRef<Container | null>(null);
+  const [pixiReady, setPixiReady] = useState(false);
 
   const hexes = useStore(s => s.hexes);
   const settlements = useStore(s => s.settlements);
@@ -90,6 +91,7 @@ export function MapCanvas() {
 
       // Apply paper grain noise overlay
       applyNoiseOverlay('.game-map-area');
+      setPixiReady(true);
 
       // ── Pan & Zoom ──
       let isDragging = false;
@@ -630,7 +632,7 @@ export function MapCanvas() {
       iconGraphics.fill({ color: 0x7A8A3A, alpha: 0.2 });
       iconGraphics.stroke({ color: 0x7A8A3A, width: 1.5, alpha: 0.5 });
     }
-  }, [hexes, settlements, armies, players, isAnimatingMovement]);
+  }, [hexes, settlements, armies, players, isAnimatingMovement, pixiReady]);
 
   // ═══════════════════════════════════════════════════════════
   // MOVEMENT REPLAY ANIMATION
@@ -811,7 +813,7 @@ export function MapCanvas() {
         drawMoveTargetIndicator(dg, ax, ay);
       }
     }
-  }, [hexes, armies, players, selectedHex, selectedArmyId, pendingOrders, isSelectingMoveTarget]);
+  }, [hexes, armies, players, selectedHex, selectedArmyId, pendingOrders, isSelectingMoveTarget, pixiReady]);
 
   return <div ref={canvasRef} style={{ width: '100%', height: '100%', cursor: isSelectingMoveTarget ? 'crosshair' : 'default' }} />;
 }

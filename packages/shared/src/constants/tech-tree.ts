@@ -11,8 +11,8 @@ export interface TechDef {
 /** Number of techs required to unlock the next era. */
 export const ERA_THRESHOLDS: Record<TechEra, { required: number; total: number }> = {
   early:  { required: 3, total: 6 },
-  middle: { required: 3, total: 10 },
-  late:   { required: 0, total: 12 }, // no next era in V1
+  middle: { required: 3, total: 9 },
+  late:   { required: 0, total: 11 }, // no next era in V1
 };
 
 export const TECH_TREE: Record<TechId, TechDef> = {
@@ -75,10 +75,6 @@ export const TECH_TREE: Record<TechId, TechDef> = {
     era: 'middle', name: 'Gryphon Taming', prerequisites: ['military_organisation'], researchCost: 45,
     unlocks: 'Griffin Lodge → Gryphons; Gryphon mounts available in unit designer',
   },
-  weapon_design: {
-    era: 'middle', name: 'Weapon Design', prerequisites: ['military_academy'], researchCost: 40,
-    unlocks: 'Create weapon variant designs (gold cost + development phase per design)',
-  },
   chain_of_command: {
     era: 'middle', name: 'Chain of Command', prerequisites: ['military_organisation'], researchCost: 40,
     unlocks: 'Unlocks 2IC (second-in-command) slots for armies, units, fleets, and ships',
@@ -128,10 +124,6 @@ export const TECH_TREE: Record<TechId, TechDef> = {
   demigryph_breeding: {
     era: 'late', name: 'Demigryph Breeding', prerequisites: ['gryphon_taming'], researchCost: 60,
     unlocks: 'Breed Demigryphs from Horses + Gryphons; Demigryph mounts in unit designer',
-  },
-  advanced_weapon_design: {
-    era: 'late', name: 'Advanced Weapon Design', prerequisites: ['weapon_design', 'firearms'], researchCost: 55,
-    unlocks: 'Expanded weapon variant budget; design firearms variants',
   },
 };
 

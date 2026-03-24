@@ -591,7 +591,7 @@ function applyPostBattlePromotions(unit: CombatUnit): { rookiesPromoted: number;
 
 // ── Stat derivation helper (used by server before passing to combat engine) ──
 
-import type { UnitTemplate, WeaponDesign } from '../types/military.js';
+import type { UnitTemplate } from '../types/military.js';
 import type { WeaponType } from '../constants/weapons.js';
 import type { ShieldType } from '../constants/shields.js';
 import { WEAPONS } from '../constants/weapons.js';
@@ -606,7 +606,6 @@ import { getBaseStats } from '../constants/units.js';
  */
 export function computeUnitStats(
   template: UnitTemplate,
-  weaponDesigns: WeaponDesign[],
 ): { fire: number; shock: number; defence: number; morale: number; armour: number; ap: number; hitsOn: number } {
   const base = getBaseStats(
     template.companiesOrSquadrons,
@@ -635,10 +634,6 @@ export function computeUnitStats(
   if (template.primary) {
     const w = WEAPONS[template.primary as WeaponType];
     if (w) applyWeaponBonus(w.statBonus, 1);
-    if (template.primaryDesignId) {
-      const d = weaponDesigns.find(d => d.id === template.primaryDesignId && d.status === 'ready');
-      if (d) applyWeaponBonus(d.statModifiers, 1);
-    }
   }
 
   // Secondary hand — 50% (weapon or shield)
@@ -647,20 +642,12 @@ export function computeUnitStats(
     const s = w ? null : SHIELDS[template.secondary as ShieldType];
     if (w) applyWeaponBonus(w.statBonus, 0.5);
     if (s) applyWeaponBonus(s.statBonus, 0.5);
-    if (template.secondaryDesignId) {
-      const d = weaponDesigns.find(d => d.id === template.secondaryDesignId && d.status === 'ready');
-      if (d) applyWeaponBonus(d.statModifiers, 0.5);
-    }
   }
 
   // Sidearm — 25% (1H weapon only)
   if (template.sidearm) {
     const w = WEAPONS[template.sidearm as WeaponType];
     if (w) applyWeaponBonus(w.statBonus, 0.25);
-    if (template.sidearmDesignId) {
-      const d = weaponDesigns.find(d => d.id === template.sidearmDesignId && d.status === 'ready');
-      if (d) applyWeaponBonus(d.statModifiers, 0.25);
-    }
   }
 
   // Armour

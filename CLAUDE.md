@@ -53,7 +53,6 @@ pnpm dev  # server :3000, client :5173
 | Hex grid (flat-top, axial q/r, layered PixiJS) | `apps/client/src/map/` |
 | Pending orders (Zustand → TurnBar → JSONB) | `apps/client/src/store/slices/orders.ts` |
 | Unit templates (nation-wide designer) | `packages/shared/src/types/military.ts`, `apps/server/src/db/schema.ts` (`unitTemplates`) |
-| Weapon designs (HOI4-style variants) | `packages/shared/src/types/military.ts`, `packages/shared/src/constants/weapons.ts` |
 | Equipment orders (workshop production) | `packages/shared/src/types/orders.ts` (`PlaceEquipmentOrder`), `apps/server/src/db/schema.ts` (`equipmentOrders`) |
 | Weapon/armour/mount constants | `packages/shared/src/constants/weapons.ts`, `armour.ts`, `mounts.ts` |
 
@@ -86,8 +85,8 @@ pnpm dev  # server :3000, client :5173
 ## Current Status
 Phases 1–7 complete, plus a major military/production rework. All core systems implemented: economy, fog of war, military, combat, tech, diplomacy, trade, stability, notifications, polish.
 
-**Military rework (complete):** Unit designer (HOI4-style nation-wide templates), weapon design system (named variants with stat tradeoffs + developing phase), troop tiers (Rookie/Capable/Veteran counts replacing strength%), equipment held by unit (returned on disband, capturable), order-based workshop production (`PlaceEquipmentOrder`), mounts with breeds (Horse/Gryphon/Demigryph), officer ranks (Major/Colonel/General).
+**Military rework (complete):** Unit designer (HOI4-style nation-wide templates), standard weapons (no custom designs — base stats only), troop tiers (Rookie/Capable/Veteran counts replacing strength%), equipment held by unit (returned on disband, capturable), order-based workshop production (`PlaceEquipmentOrder`), mounts with breeds (Horse/Gryphon/Demigryph), officer ranks (Major/Colonel/General). Weapons & Equipment tab shows all available weapons/shields/armour/mounts with tech unlock status.
 
-**Client UI (pending):** Unit Designer panel, Weapon Designer panel, Equipment Order UI, Draft panel, updated unit card with tier breakdown.
+**Client UI (pending):** Equipment Order UI refinements, Draft panel, updated unit card with tier breakdown.
 
 **Phase 8 (not started):** hand-craft V1 map, end-to-end playtesting, deploy (VPS + PM2 + SSL).

@@ -8,7 +8,7 @@ import {
   computeUnitStats, MEN_PER_COMPANY, MEN_PER_SQUADRON,
   canGoInSecondary, canGoInSidearm, secondarySlotAllowed,
   calculateFoodConsumption,
-  type ShipType, type UnitTemplate, type WeaponDesign, type TroopCounts,
+  type ShipType, type UnitTemplate, type TroopCounts,
   type WeaponType, type ShieldType, type ArmourType, type MountType, type MountBreed,
   type WeaponDef, type ShieldDef,
   type BuildingType,
@@ -47,7 +47,6 @@ export function MilitaryTab() {
   const armies = useStore(s => s.armies);
   const settlements = useStore(s => s.settlements);
   const unitTemplates = useStore(s => s.unitTemplates) as UnitTemplate[];
-  const weaponDesigns = useStore(s => s.weaponDesigns) as WeaponDesign[];
   const equipmentOrders = useStore(s => s.equipmentOrders) as any[];
   const pendingOrders = useStore(s => s.pendingOrders);
   const addRecruitment = useStore(s => s.addRecruitment);
@@ -60,14 +59,13 @@ export function MilitaryTab() {
 
   const setSelectedSettlementId = useStore(s => s.setSelectedSettlementId);
 
-  const [activeTab, setActiveTab] = useState<'armies' | 'stockpile' | 'orbat' | 'designer' | 'weapons' | 'production'>('armies');
+  const [activeTab, setActiveTab] = useState<'armies' | 'stockpile' | 'orbat' | 'designer' | 'equipment' | 'production'>('armies');
 
   if (!player) return <div><h2>Military</h2><p>Loading...</p></div>;
 
   const myArmies = armies.filter((a: any) => a.ownerId === player.id);
   const mySettlements = settlements.filter((s: any) => s.ownerId === player.id);
   const myTemplates = unitTemplates.filter(t => t.playerId === player.id);
-  const myDesigns = weaponDesigns.filter((d: any) => d.playerId === player.id);
   const myOrders = equipmentOrders.filter((o: any) => o.playerId === player.id);
 
   const totalUnits = myArmies.reduce((sum: number, a: any) =>
@@ -95,7 +93,7 @@ export function MilitaryTab() {
 
       {/* Sub-tabs */}
       <div style={{ display: 'flex', gap: 4, marginTop: 16, marginBottom: 12, borderBottom: '1px solid var(--border-color)', paddingBottom: 4 }}>
-        {(['armies', 'stockpile', 'orbat', 'designer', 'weapons', 'production'] as const).map(tab => (
+        {(['armies', 'stockpile', 'orbat', 'designer', 'equipment', 'production'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -110,7 +108,7 @@ export function MilitaryTab() {
               fontFamily: 'var(--font-body)',
             }}
           >
-            {{ armies: 'Armies', stockpile: 'Stockpile', orbat: 'ORBAT', designer: 'Unit Designer', weapons: 'Weapon Designer', production: 'Production' }[tab]}
+            {{ armies: 'Armies', stockpile: 'Stockpile', orbat: 'ORBAT', designer: 'Unit Designer', equipment: 'Weapons & Equipment', production: 'Production' }[tab]}
           </button>
         ))}
       </div>
@@ -127,7 +125,6 @@ export function MilitaryTab() {
               slug={slug!}
               army={a}
               templates={myTemplates}
-              weaponDesigns={myDesigns}
               pendingOrders={pendingOrders}
               onCancelMovement={removeMovement}
             />
@@ -171,7 +168,6 @@ export function MilitaryTab() {
                 settlement={s}
                 armies={armiesHere}
                 templates={myTemplates}
-                weaponDesigns={myDesigns}
                 pendingOrders={pendingOrders}
                 playerGold={(player?.gold as number) ?? 0}
                 onRecruit={addRecruitment}
@@ -205,7 +201,6 @@ export function MilitaryTab() {
         <OrbatTab
           armies={myArmies}
           templates={myTemplates}
-          weaponDesigns={myDesigns}
         />
       )}
 
@@ -213,7 +208,6 @@ export function MilitaryTab() {
       {activeTab === 'designer' && (
         <UnitDesignerTab
           templates={myTemplates}
-          weaponDesigns={myDesigns}
           pendingOrders={pendingOrders}
           setPendingOrders={setPendingOrders}
           playerId={player.id as string}
@@ -221,15 +215,9 @@ export function MilitaryTab() {
         />
       )}
 
-      {/* Weapon Designer Tab */}
-      {activeTab === 'weapons' && (
-        <WeaponDesignerTab
-          designs={myDesigns}
-          pendingOrders={pendingOrders}
-          setPendingOrders={setPendingOrders}
-          player={player}
-          researchedTechs={researchedTechs}
-        />
+      {/* Weapons & Equipment Tab */}
+      {activeTab === 'equipment' && (
+        <WeaponsEquipmentTab researchedTechs={researchedTechs} />
       )}
 
       {/* Production Tab */}
@@ -237,7 +225,6 @@ export function MilitaryTab() {
         <ProductionTab
           settlements={mySettlements}
           equipmentOrders={myOrders}
-          weaponDesigns={myDesigns}
           pendingOrders={pendingOrders}
           setPendingOrders={setPendingOrders}
         />
@@ -272,14 +259,10 @@ const BLANK_TEMPLATE: CreateTemplateOrder = {
   sidearm: null,
   armour: null,
   mount: null,
-  primaryDesignId: null,
-  secondaryDesignId: null,
-  sidearmDesignId: null,
 };
 
-function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOrders, playerId, researchedTechs }: {
+function UnitDesignerTab({ templates, pendingOrders, setPendingOrders, playerId, researchedTechs }: {
   templates: UnitTemplate[];
-  weaponDesigns: WeaponDesign[];
   pendingOrders: any;
   setPendingOrders: (p: any) => void;
   playerId: string;
@@ -312,9 +295,6 @@ function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOr
       sidearm: pending?.changes.sidearm ?? tmpl.sidearm,
       armour: pending?.changes.armour ?? tmpl.armour,
       mount: pending?.changes.mount ?? tmpl.mount,
-      primaryDesignId: pending?.changes.primaryDesignId ?? (tmpl as any).primaryDesignId ?? null,
-      secondaryDesignId: pending?.changes.secondaryDesignId ?? (tmpl as any).secondaryDesignId ?? null,
-      sidearmDesignId: pending?.changes.sidearmDesignId ?? (tmpl as any).sidearmDesignId ?? null,
     });
     setEditingId(tmpl.id);
     setShowCreate(true);
@@ -342,7 +322,6 @@ function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOr
   const previewStats = editing
     ? computeUnitStats(
         { ...editing, id: '__preview', gameId: '', playerId, createdAt: '', updatedAt: '' } as unknown as UnitTemplate,
-        weaponDesigns
       )
     : null;
 
@@ -363,7 +342,7 @@ function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOr
       {templates.map(tmpl => {
         const isDeleted = pendingDelete.includes(tmpl.id);
         const hasUpdate = pendingUpdate.some(u => u.templateId === tmpl.id);
-        const stats = computeUnitStats(tmpl, weaponDesigns);
+        const stats = computeUnitStats(tmpl);
         const maxTroops = tmpl.isMounted ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
 
         return (
@@ -406,7 +385,6 @@ function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOr
       {pendingCreate.map((tmpl, i) => {
         const stats = computeUnitStats(
           { ...tmpl, id: `__new_${i}`, gameId: '', playerId, createdAt: '', updatedAt: '' } as unknown as UnitTemplate,
-          weaponDesigns
         );
         const maxTroops = tmpl.isMounted ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
         return (
@@ -503,7 +481,6 @@ function UnitDesignerTab({ templates, weaponDesigns, pendingOrders, setPendingOr
                       ...editing,
                       primary: newPrimary,
                       secondary: clearSecondary ? null : editing.secondary,
-                      secondaryDesignId: clearSecondary ? null : (editing as any).secondaryDesignId,
                     });
                   }}
                 />
@@ -651,261 +628,100 @@ function StatsPreview({ stats }: { stats: { fire: number; shock: number; defence
   );
 }
 
-// ─── Weapon Designer Tab ───────────────────────────────────────────────────
+// ─── Weapons & Equipment Tab ──────────────────────────────────────────────
 
-const STAT_KEYS = ['fire', 'shock', 'defence', 'morale', 'ap'] as const;
-type StatKey = typeof STAT_KEYS[number];
-
-const ALL_DESIGNABLE: Array<{ key: WeaponType | ShieldType; group: string }> = [
-  ...(Object.keys(WEAPONS) as WeaponType[]).map(k => ({ key: k, group: 'Weapon' })),
-  ...(Object.keys(SHIELDS) as ShieldType[]).map(k => ({ key: k, group: 'Shield' })),
-];
-
-function WeaponDesignerTab({ designs, pendingOrders, setPendingOrders, player, researchedTechs }: {
-  designs: WeaponDesign[];
-  pendingOrders: any;
-  setPendingOrders: (p: any) => void;
-  player: Record<string, unknown>;
-  researchedTechs: Set<string>;
-}) {
-  const [showCreate, setShowCreate] = useState(false);
-  const [newDesign, setNewDesign] = useState({
-    baseWeapon: 'polearm' as WeaponType | ShieldType,
-    name: '',
-    statModifiers: {} as Partial<Record<StatKey, number>>,
-  });
-  const pending = pendingOrders.createWeaponDesigns ?? [];
-  const pendingRetire = pendingOrders.retireWeaponDesigns ?? [];
-
-  const gold = (player.gold as number) ?? 0;
-
-  const baseDef: WeaponDef | ShieldDef | undefined =
-    WEAPONS[newDesign.baseWeapon as WeaponType] ?? SHIELDS[newDesign.baseWeapon as ShieldType];
-  const budget = baseDef?.designBudget ?? 3;
-  // Only allow editing stats the weapon/shield actually uses
-  const activeStatKeys = STAT_KEYS.filter(k => ((baseDef?.statBonus as any)?.[k] ?? 0) !== 0);
-  const budgetUsed = activeStatKeys.reduce((sum, k) => sum + Math.max(0, newDesign.statModifiers[k] ?? 0), 0);
-  const balance = activeStatKeys.reduce((sum, k) => sum + (newDesign.statModifiers[k] ?? 0), 0);
-  // Cost scales with weapon production cost + points spent
-  const designCost = Math.round((baseDef?.productionCost ?? 2) * 50 + budgetUsed * 75);
-  const canSubmit = newDesign.name.trim().length > 0 && balance === 0 && budgetUsed <= budget && gold >= designCost;
-
-  function setMod(k: StatKey, delta: number) {
-    const cur = newDesign.statModifiers[k] ?? 0;
-    const next = cur + delta;
-    // Don't allow going beyond budget on positive side
-    if (delta > 0 && budgetUsed >= budget) return;
-    setNewDesign({ ...newDesign, statModifiers: { ...newDesign.statModifiers, [k]: next } });
-  }
-
-  function openCreate() {
-    setNewDesign({ baseWeapon: 'polearm', name: '', statModifiers: {} });
-    setShowCreate(true);
-  }
-
-  function addDesign() {
-    if (!canSubmit) return;
-    const mods: Partial<Record<StatKey, number>> = {};
-    for (const k of activeStatKeys) {
-      const v = newDesign.statModifiers[k] ?? 0;
-      if (v !== 0) mods[k] = v;
-    }
-    setPendingOrders({ createWeaponDesigns: [...pending, { ...newDesign, statModifiers: mods, goldCost: designCost }] });
-    setShowCreate(false);
-  }
+function WeaponsEquipmentTab({ researchedTechs }: { researchedTechs: Set<string> }) {
+  const SECTIONS: { title: string; items: Array<{ key: string; def: { name: string; statBonus: Record<string, number>; techRequired: string | null; requiredResources?: string[]; productionCost?: number; goldCostPerItem?: number; handedness?: string } }> }[] = [
+    {
+      title: 'Weapons',
+      items: (Object.entries(WEAPONS) as [WeaponType, WeaponDef][]).map(([k, d]) => ({ key: k, def: d as any })),
+    },
+    {
+      title: 'Shields',
+      items: (Object.entries(SHIELDS) as [ShieldType, ShieldDef][]).map(([k, d]) => ({ key: k, def: d as any })),
+    },
+    {
+      title: 'Armour',
+      items: (Object.entries(ARMOUR_TYPES) as [ArmourType, any][]).map(([k, d]) => ({ key: k, def: d })),
+    },
+    {
+      title: 'Mounts',
+      items: (Object.entries(MOUNT_TYPES) as [MountType, any][]).map(([k, d]) => ({ key: k, def: d })),
+    },
+  ];
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h3 style={{ margin: 0 }}>Weapon Designs</h3>
-        <button className="btn btn-primary" style={{ padding: '4px 12px', fontSize: 13 }} onClick={openCreate}>
-          + New Design
-        </button>
-      </div>
-
-      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-        Designs take 2 turns to develop. Cost scales with the weapon's production cost and the number of stat points shifted.
+      <h3 style={{ marginBottom: 4 }}>Weapons & Equipment</h3>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
+        Equipment available to your realm. Locked items require researching the listed technology.
       </p>
 
-      {designs.length === 0 && pending.length === 0 && (
-        <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No weapon designs yet.</p>
-      )}
-
-      {designs.map((d: any) => {
-        const isRetiring = pendingRetire.includes(d.id);
-        const statusColor = d.status === 'ready' ? 'var(--accent-green)' : d.status === 'developing' ? 'var(--accent-gold)' : 'var(--text-muted)';
-        const mods = d.statModifiers as Record<string, number> | undefined;
-        const modStr = mods && Object.keys(mods).length > 0
-          ? Object.entries(mods).map(([k, v]) => `${fmt(k)} ${v > 0 ? '+' : ''}${v}`).join(', ')
-          : 'No stat changes';
-        return (
-          <div key={d.id} className="settlement-card" style={{ marginTop: 8, opacity: isRetiring ? 0.5 : 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <strong>{d.name}</strong>
-                <span style={{ marginLeft: 6, fontSize: 11, color: statusColor }}>
-                  {d.status === 'developing' ? `Developing (${d.turnsRemaining} turns)` : fmt(d.status)}
-                </span>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {fmt(d.baseWeapon)} variant · {modStr}
+      {SECTIONS.map(section => (
+        <div key={section.title} style={{ marginBottom: 20 }}>
+          <h4 style={{ color: 'var(--text-secondary)', marginBottom: 8, fontSize: 14, borderBottom: '1px solid var(--border-color)', paddingBottom: 4 }}>
+            {section.title}
+          </h4>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+            {section.items.map(({ key, def }) => {
+              const techReq = def.techRequired;
+              const locked = !!techReq && !researchedTechs.has(techReq);
+              const stats = Object.entries(def.statBonus).filter(([, v]) => v !== 0);
+              return (
+                <div
+                  key={key}
+                  className="settlement-card"
+                  style={{
+                    marginTop: 0, opacity: locked ? 0.5 : 1,
+                    borderColor: locked ? 'var(--border-color)' : 'var(--accent-green)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <strong style={{ fontSize: 13 }}>{def.name}</strong>
+                    {locked
+                      ? <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Requires {fmt(techReq!)}</span>
+                      : <span style={{ fontSize: 11, color: 'var(--accent-green)' }}>Available</span>
+                    }
+                  </div>
+                  {stats.length > 0 && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4, fontSize: 12, flexWrap: 'wrap' }}>
+                      {stats.map(([k, v]) => (
+                        <span key={k} style={{ color: 'var(--text-secondary)' }}>
+                          {fmt(k)}: <strong style={{ color: (v as number) > 0 ? 'var(--text-primary)' : 'var(--accent-red)' }}>{v as number > 0 ? `+${v}` : v}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4, fontSize: 11, color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                    {(def as any).handedness && <span>{fmt((def as any).handedness)}</span>}
+                    {def.requiredResources && def.requiredResources.length > 0 && (
+                      <span>Needs: {def.requiredResources.map((r: string) => fmt(r)).join(', ')}</span>
+                    )}
+                    {def.productionCost != null && <span>{def.productionCost} wksp pts</span>}
+                    {def.goldCostPerItem != null && <span>{def.goldCostPerItem}g/item</span>}
+                  </div>
                 </div>
-              </div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                {!isRetiring
-                  ? <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: 12, color: 'var(--accent-red)' }}
-                      onClick={() => setPendingOrders({ retireWeaponDesigns: [...pendingRetire, d.id] })}>Retire</button>
-                  : <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: 12 }}
-                      onClick={() => setPendingOrders({ retireWeaponDesigns: pendingRetire.filter((x: string) => x !== d.id) })}>Undo</button>
-                }
-              </div>
-            </div>
-          </div>
-        );
-      })}
-
-      {pending.map((d: any, i: number) => (
-        <div key={`new-${i}`} className="settlement-card" style={{ marginTop: 8, borderColor: 'var(--accent-green)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <strong>{d.name}</strong>
-              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--accent-green)', border: '1px solid', borderRadius: 3, padding: '1px 4px' }}>NEW (−{d.goldCost ?? '?'}g)</span>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{fmt(d.baseWeapon)} variant</div>
-            </div>
-            <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: 12 }}
-              onClick={() => setPendingOrders({ createWeaponDesigns: pending.filter((_: any, j: number) => j !== i) })}>Remove</button>
+              );
+            })}
           </div>
         </div>
       ))}
-
-      {/* Create modal */}
-      {showCreate && baseDef && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-dark)', borderRadius: 8, padding: 24, width: 460, maxHeight: '85vh', overflowY: 'auto' }}>
-            <h3 style={{ marginBottom: 16 }}>New Weapon Design</h3>
-
-            <label style={{ display: 'block', marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Design Name</div>
-              <input className="input" style={{ width: '100%', padding: '6px 8px' }}
-                value={newDesign.name} onChange={e => setNewDesign({ ...newDesign, name: e.target.value })}
-                placeholder="e.g. Light Rifle" />
-            </label>
-
-            {/* Base weapon picker */}
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Base Weapon</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {ALL_DESIGNABLE.map(({ key, group }) => {
-                  const def = WEAPONS[key as WeaponType] ?? SHIELDS[key as ShieldType];
-                  const techReq = def?.techRequired;
-                  const locked = !!techReq && !researchedTechs.has(techReq);
-                  const selected = newDesign.baseWeapon === key;
-                  return (
-                    <button key={key} disabled={locked}
-                      onClick={() => !locked && setNewDesign({ ...newDesign, baseWeapon: key, statModifiers: {} })}
-                      title={locked ? `Requires: ${fmt(techReq!)}` : `${group}: ${def?.name}`}
-                      style={{
-                        padding: '5px 10px', fontSize: 12, borderRadius: 4,
-                        cursor: locked ? 'not-allowed' : 'pointer',
-                        border: selected ? '1px solid var(--accent-gold)' : '1px solid var(--border-dark)',
-                        background: selected ? 'var(--accent-gold)' : 'var(--bg-inset)',
-                        color: selected ? 'var(--bg-parchment-dark)' : locked ? 'var(--text-muted)' : 'var(--text-primary)',
-                        opacity: locked ? 0.45 : 1,
-                        fontFamily: 'var(--font-body)',
-                      }}>
-                      {fmt(key)}{locked ? ' 🔒' : ''}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Base stats */}
-            <div style={{ background: 'var(--bg-inset)', borderRadius: 6, padding: '10px 12px', marginBottom: 12, border: '1px solid var(--border-color)' }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Base Stats — {baseDef.name}</div>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12 }}>
-                {Object.entries(baseDef.statBonus).map(([k, v]) => v !== 0 && (
-                  <span key={k}><span style={{ color: 'var(--text-muted)' }}>{fmt(k)}:</span> <strong>{v}</strong></span>
-                ))}
-              </div>
-            </div>
-
-            {/* Budget tracker */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Budget: {budgetUsed}/{budget} points used</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: balance === 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                Balance: {balance > 0 ? `+${balance}` : balance} {balance === 0 ? '✓' : '(must reach 0)'}
-              </span>
-            </div>
-
-            {/* Stat modifier grid */}
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
-                Shift stats. Each +1 costs a budget point; take a −1 somewhere to offset.
-              </div>
-              {activeStatKeys.length === 0 ? (
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>No stats to modify for this weapon.</p>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  {activeStatKeys.map(k => {
-                    const base = (baseDef.statBonus as any)[k] ?? 0;
-                    const mod = newDesign.statModifiers[k] ?? 0;
-                    const canIncrease = budgetUsed < budget;
-                    return (
-                      <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-inset)', borderRadius: 4, padding: '6px 8px' }}>
-                        <span style={{ flex: 1, fontSize: 12, color: 'var(--text-muted)' }}>{fmt(k)}</span>
-                        <span style={{ fontSize: 12, color: 'var(--text-secondary)', minWidth: 24, textAlign: 'right' }}>{base}</span>
-                        <button onClick={() => setMod(k, -1)} style={{ width: 24, height: 24, border: '1px solid var(--border-dark)', borderRadius: 3, background: 'var(--bg-surface)', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>−</button>
-                        <span style={{ minWidth: 28, textAlign: 'center', fontSize: 13, fontWeight: 600,
-                          color: mod > 0 ? 'var(--accent-green)' : mod < 0 ? 'var(--accent-red)' : 'var(--text-primary)' }}>
-                          {mod > 0 ? `+${mod}` : mod}
-                        </span>
-                        <button onClick={() => setMod(k, 1)} disabled={!canIncrease} style={{ width: 24, height: 24, border: '1px solid var(--border-dark)', borderRadius: 3, background: 'var(--bg-surface)', cursor: canIncrease ? 'pointer' : 'not-allowed', fontSize: 14, lineHeight: 1, opacity: canIncrease ? 1 : 0.4 }}>+</button>
-                        <span style={{ fontSize: 12, fontWeight: 600, minWidth: 24, textAlign: 'right', color: mod !== 0 ? 'var(--accent-gold)' : 'var(--text-secondary)' }}>={base + mod}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Cost summary */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, padding: '8px 10px', background: 'var(--bg-inset)', borderRadius: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                Base ({baseDef.productionCost} × 50) + {budgetUsed} pts × 75
-              </span>
-              <span style={{ fontSize: 14, fontWeight: 600, color: gold >= designCost ? 'var(--text-primary)' : 'var(--accent-red)' }}>
-                {designCost}g {gold < designCost ? '— insufficient funds' : ''}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={addDesign} disabled={!canSubmit}>
-                Queue Design (−{designCost}g)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
 // ─── Production Tab ────────────────────────────────────────────────────────
 
-function ProductionTab({ settlements, equipmentOrders, weaponDesigns, pendingOrders, setPendingOrders }: {
+function ProductionTab({ settlements, equipmentOrders, pendingOrders, setPendingOrders }: {
   settlements: any[];
   equipmentOrders: any[];
-  weaponDesigns: WeaponDesign[];
   pendingOrders: any;
   setPendingOrders: (p: any) => void;
 }) {
   const pendingNew: any[] = pendingOrders.placeEquipmentOrders ?? [];
   const pendingCancel: string[] = pendingOrders.cancelEquipmentOrders ?? [];
 
-  const readyDesigns = weaponDesigns.filter((d: any) => d.status === 'ready');
-
-  const [placing, setPlacing] = useState<{ settlementId: string; equipmentType: string; quantity: number; designId?: string; designName?: string } | null>(null);
+  const [placing, setPlacing] = useState<{ settlementId: string; equipmentType: string; quantity: number } | null>(null);
 
   return (
     <div>
@@ -939,14 +755,11 @@ function ProductionTab({ settlements, equipmentOrders, weaponDesigns, pendingOrd
               const isWeapon = !!(WEAPONS as any)[o.equipmentType] || !!(SHIELDS as any)[o.equipmentType];
               const capacity = isWeapon ? armsCount : armourCount;
               const remaining = capacity > 0 ? Math.ceil((o.quantityOrdered - o.quantityFulfilled) / capacity) : '?';
-              const linkedDesign = o.designId ? readyDesigns.find((d: any) => d.id === o.designId) : null;
-              const orderLabel = linkedDesign ? linkedDesign.name : fmt(o.equipmentType);
+              const orderLabel = fmt(o.equipmentType);
               return (
                 <div key={o.id} style={{ marginBottom: 8, padding: '8px 10px', background: 'var(--bg-inset)', borderRadius: 4, opacity: isCancelling ? 0.5 : 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <span style={{ fontSize: 13 }}>{orderLabel} ×{o.quantityOrdered}
-                      {linkedDesign && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>({fmt(o.equipmentType)})</span>}
-                    </span>
+                    <span style={{ fontSize: 13 }}>{orderLabel} ×{o.quantityOrdered}</span>
                     <div style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
                       <span>~{remaining} turns</span>
                       {!isCancelling
@@ -970,8 +783,7 @@ function ProductionTab({ settlements, equipmentOrders, weaponDesigns, pendingOrd
               <div key={`new-${i}`} style={{ marginBottom: 8, padding: '8px 10px', background: 'var(--bg-inset)', borderRadius: 4, border: '1px solid var(--accent-green)', opacity: 0.9 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 13 }}>
-                    {o.designName ?? fmt(o.equipmentType)} ×{o.quantity}
-                    {o.designName && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4 }}>({fmt(o.equipmentType)})</span>}
+                    {fmt(o.equipmentType)} ×{o.quantity}
                     {' '}<span style={{ fontSize: 11, color: 'var(--accent-green)' }}>NEW</span>
                   </span>
                   <button className="btn btn-secondary" style={{ padding: '1px 6px', fontSize: 11 }}
@@ -1003,45 +815,15 @@ function ProductionTab({ settlements, equipmentOrders, weaponDesigns, pendingOrd
           <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-dark)', borderRadius: 8, padding: 24, width: 400, maxHeight: '85vh', overflowY: 'auto' }}>
             <h3 style={{ marginBottom: 16 }}>Place Equipment Order</h3>
 
-            {/* Weapon designs section */}
-            {readyDesigns.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Weapon Designs (Arms Workshop)</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {readyDesigns.map((d: any) => {
-                    const selected = placing.designId === d.id;
-                    return (
-                      <button key={d.id}
-                        onClick={() => setPlacing({ ...placing, equipmentType: d.baseWeapon, designId: d.id, designName: d.name })}
-                        style={{
-                          textAlign: 'left', padding: '7px 10px', borderRadius: 4, cursor: 'pointer',
-                          border: selected ? '1px solid var(--accent-gold)' : '1px solid var(--border-dark)',
-                          background: selected ? 'var(--bg-surface-hover)' : 'var(--bg-inset)',
-                          fontFamily: 'var(--font-body)',
-                        }}>
-                        <span style={{ fontSize: 13, color: selected ? 'var(--accent-gold)' : 'var(--text-primary)' }}>{d.name}</span>
-                        <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-muted)' }}>{fmt(d.baseWeapon)} variant</span>
-                        {d.statModifiers && Object.keys(d.statModifiers).length > 0 && (
-                          <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--text-secondary)' }}>
-                            {Object.entries(d.statModifiers as Record<string, number>).map(([k, v]) => `${fmt(k)} ${v > 0 ? '+' : ''}${v}`).join(', ')}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Generic weapons (no design) */}
+            {/* Weapons */}
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Generic Weapons (no design)</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Weapons (Arms Workshop)</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {[...Object.keys(WEAPONS), ...Object.keys(SHIELDS)].map(w => {
-                  const selected = placing.equipmentType === w && !placing.designId;
+                  const selected = placing.equipmentType === w;
                   return (
                     <button key={w}
-                      onClick={() => setPlacing({ ...placing, equipmentType: w, designId: undefined, designName: undefined })}
+                      onClick={() => setPlacing({ ...placing, equipmentType: w })}
                       style={{
                         padding: '5px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
                         border: selected ? '1px solid var(--accent-gold)' : '1px solid var(--border-dark)',
@@ -1059,10 +841,10 @@ function ProductionTab({ settlements, equipmentOrders, weaponDesigns, pendingOrd
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Armour (Armour Workshop)</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {Object.keys(ARMOUR_TYPES).map(a => {
-                  const selected = placing.equipmentType === a && !placing.designId;
+                  const selected = placing.equipmentType === a;
                   return (
                     <button key={a}
-                      onClick={() => setPlacing({ ...placing, equipmentType: a, designId: undefined, designName: undefined })}
+                      onClick={() => setPlacing({ ...placing, equipmentType: a })}
                       style={{
                         padding: '5px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
                         border: selected ? '1px solid var(--accent-gold)' : '1px solid var(--border-dark)',
@@ -1098,11 +880,10 @@ function ProductionTab({ settlements, equipmentOrders, weaponDesigns, pendingOrd
 
 // ─── Army Card ─────────────────────────────────────────────────────────────
 
-function ArmyCard({ slug, army, templates, weaponDesigns, pendingOrders, onCancelMovement }: {
+function ArmyCard({ slug, army, templates, pendingOrders, onCancelMovement }: {
   slug: string;
   army: any;
   templates: UnitTemplate[];
-  weaponDesigns: WeaponDesign[];
   pendingOrders: any;
   onCancelMovement: (armyId: string) => void;
 }) {
@@ -1187,7 +968,7 @@ function ArmyCard({ slug, army, templates, weaponDesigns, pendingOrders, onCance
           )}
           {activeUnits.length === 0 && <p className="army-empty-roster">This army has no active units.</p>}
           {activeUnits.map((u: any) => (
-            <UnitRow key={u.id} unit={u} slug={slug} armyId={army.id} templates={templates} weaponDesigns={weaponDesigns} />
+            <UnitRow key={u.id} unit={u} slug={slug} armyId={army.id} templates={templates} />
           ))}
           <div className="army-supply-bar">
             <span>Supply: {army.supplyBank}</span>
@@ -1200,9 +981,9 @@ function ArmyCard({ slug, army, templates, weaponDesigns, pendingOrders, onCance
 
 // ─── Unit Row ──────────────────────────────────────────────────────────────
 
-function UnitRow({ unit, slug, armyId, templates, weaponDesigns }: {
+function UnitRow({ unit, slug, armyId, templates }: {
   unit: any; slug: string; armyId: string;
-  templates: UnitTemplate[]; weaponDesigns: WeaponDesign[];
+  templates: UnitTemplate[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -1222,7 +1003,7 @@ function UnitRow({ unit, slug, armyId, templates, weaponDesigns }: {
   const stateInfo = STATE_LABELS[unit.state] ?? STATE_LABELS.full;
   const diceMultiplier = STATE_DICE_MULTIPLIER[unit.state] ?? 1;
   const displayName = unit.name || tmpl?.name || 'Unknown Unit';
-  const stats = tmpl ? computeUnitStats(tmpl, weaponDesigns) : null;
+  const stats = tmpl ? computeUnitStats(tmpl) : null;
 
   async function saveUnitField(field: 'name' | 'subtitle', value: string) {
     const sessionToken = localStorage.getItem(`session:${slug}`);
@@ -1304,7 +1085,6 @@ function UnitRow({ unit, slug, armyId, templates, weaponDesigns }: {
         <UnitTOE
           unit={unit}
           tmpl={tmpl ?? null}
-          weaponDesigns={weaponDesigns}
           stats={stats}
           troopCounts={troopCounts}
           maxTroops={maxTroops}
@@ -1643,11 +1423,10 @@ function computeRequirements(tmpl: UnitTemplate, settlement: any, pendingOrders:
   return deficits;
 }
 
-function RecruitPanel({ settlement, armies, templates, weaponDesigns, pendingOrders, playerGold, onRecruit }: {
+function RecruitPanel({ settlement, armies, templates, pendingOrders, playerGold, onRecruit }: {
   settlement: any;
   armies: any[];
   templates: UnitTemplate[];
-  weaponDesigns: WeaponDesign[];
   pendingOrders: any;
   playerGold: number;
   onRecruit: (order: RecruitFromTemplateOrder) => void;
@@ -1677,7 +1456,7 @@ function RecruitPanel({ settlement, armies, templates, weaponDesigns, pendingOrd
       </div>
 
       {templates.map(tmpl => {
-        const stats = computeUnitStats(tmpl, weaponDesigns);
+        const stats = computeUnitStats(tmpl);
         const troops = tmpl.isMounted
           ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON
           : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
@@ -1775,15 +1554,11 @@ function RecruitPanel({ settlement, armies, templates, weaponDesigns, pendingOrd
 
 // ─── Unit TO&E Detail ──────────────────────────────────────────────────────
 
-/** Get display name for a weapon/shield/armour slot, including weapon design name if applicable. */
+/** Get display name for a weapon/shield/armour slot. */
 function getEquipmentLabel(
   slotType: WeaponType | ShieldType | ArmourType | MountType | null,
-  designId: string | null | undefined,
-  weaponDesigns: WeaponDesign[],
 ): string {
   if (!slotType) return '—';
-  const design = designId ? weaponDesigns.find(d => d.id === designId) : null;
-  if (design) return `${design.name} (${fmt(slotType)})`;
   return fmt(slotType);
 }
 
@@ -1797,10 +1572,9 @@ function getUnitTypeSymbol(tmpl: UnitTemplate | null): { symbol: string; label: 
   return { symbol: '✕', label: 'Infantry' };
 }
 
-function UnitTOE({ unit, tmpl, weaponDesigns, stats, troopCounts, maxTroops, total, pct, stateInfo, diceMultiplier, editingSubtitle, subtitleValue, setEditingSubtitle, setSubtitleValue, saveUnitField }: {
+function UnitTOE({ unit, tmpl, stats, troopCounts, maxTroops, total, pct, stateInfo, diceMultiplier, editingSubtitle, subtitleValue, setEditingSubtitle, setSubtitleValue, saveUnitField }: {
   unit: any;
   tmpl: UnitTemplate | null;
-  weaponDesigns: WeaponDesign[];
   stats: ReturnType<typeof computeUnitStats> | null;
   troopCounts: TroopCounts;
   maxTroops: number;
@@ -1826,19 +1600,19 @@ function UnitTOE({ unit, tmpl, weaponDesigns, stats, troopCounts, maxTroops, tot
   if (tmpl && !tmpl.isIrregular) {
     if (tmpl.primary) {
       equipRows.push({
-        label: getEquipmentLabel(tmpl.primary, tmpl.primaryDesignId, weaponDesigns),
+        label: getEquipmentLabel(tmpl.primary),
         held: held.primary, required: maxTroops, icon: '⚔',
       });
     }
     if ((tmpl as any).secondary) {
       equipRows.push({
-        label: getEquipmentLabel((tmpl as any).secondary, (tmpl as any).secondaryDesignId, weaponDesigns),
+        label: getEquipmentLabel((tmpl as any).secondary),
         held: held.secondary, required: maxTroops, icon: (SHIELDS as any)[(tmpl as any).secondary] ? '🛡' : '⚔',
       });
     }
     if (tmpl.sidearm) {
       equipRows.push({
-        label: getEquipmentLabel(tmpl.sidearm, tmpl.sidearmDesignId, weaponDesigns),
+        label: getEquipmentLabel(tmpl.sidearm),
         held: held.sidearm, required: maxTroops, icon: '🗡',
       });
     }
@@ -1974,10 +1748,9 @@ function UnitTOE({ unit, tmpl, weaponDesigns, stats, troopCounts, maxTroops, tot
 
 // ─── ORBAT Tab ─────────────────────────────────────────────────────────────
 
-function OrbatTab({ armies, templates, weaponDesigns }: {
+function OrbatTab({ armies, templates }: {
   armies: any[];
   templates: UnitTemplate[];
-  weaponDesigns: WeaponDesign[];
 }) {
   const nobles = useStore(s => s.nobles) as any[] | undefined;
   const player = useStore(s => s.player) as Record<string, unknown> | null;
@@ -2070,7 +1843,7 @@ function OrbatTab({ armies, templates, weaponDesigns }: {
                     const uPct = maxTroops > 0 ? Math.round((uTotal / maxTroops) * 100) : 0;
                     const unitStateInfo = STATE_LABELS[u.state] ?? STATE_LABELS.full;
                     const isExpanded = expandedUnits.has(u.id);
-                    const stats = tmpl ? computeUnitStats(tmpl, weaponDesigns) : null;
+                    const stats = tmpl ? computeUnitStats(tmpl) : null;
                     const displayName = u.name || tmpl?.name || 'Unit';
 
                     return (
@@ -2100,9 +1873,9 @@ function OrbatTab({ armies, templates, weaponDesigns }: {
                             </div>
                             {!tmpl.isIrregular && (
                               <div className="orbat-toe-equip">
-                                {tmpl.primary && <div>{getEquipmentLabel(tmpl.primary, tmpl.primaryDesignId, weaponDesigns)}</div>}
-                                {(tmpl as any).secondary && <div>{getEquipmentLabel((tmpl as any).secondary, (tmpl as any).secondaryDesignId, weaponDesigns)}</div>}
-                                {tmpl.sidearm && <div>{getEquipmentLabel(tmpl.sidearm, tmpl.sidearmDesignId, weaponDesigns)}</div>}
+                                {tmpl.primary && <div>{getEquipmentLabel(tmpl.primary)}</div>}
+                                {(tmpl as any).secondary && <div>{getEquipmentLabel((tmpl as any).secondary)}</div>}
+                                {tmpl.sidearm && <div>{getEquipmentLabel(tmpl.sidearm)}</div>}
                                 {tmpl.armour && <div>{fmt(tmpl.armour)}</div>}
                                 {tmpl.mount && <div>{fmt(tmpl.mount)}{u.mountBreed ? ` (${fmt(u.mountBreed)})` : ''}</div>}
                               </div>

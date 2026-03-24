@@ -47,8 +47,6 @@ export interface WeaponDef {
   requiredResources: ResourceType[];
   /** Tech required to unlock production. null = available from start. */
   techRequired: TechId | null;
-  /** Max stat points that can be shifted via weapon design. */
-  designBudget: number;
   /** Production cost in workshop-points per item. */
   productionCost: number;
   /** Gold deducted per item produced at full efficiency. */
@@ -63,7 +61,6 @@ export const WEAPONS: Record<WeaponType, WeaponDef> = {
     statBonus: { shock: 1 },
     requiredResources: ['iron_ore'],
     techRequired: null,
-    designBudget: 1,
     productionCost: 1,
     goldCostPerItem: 1,
   },
@@ -73,7 +70,6 @@ export const WEAPONS: Record<WeaponType, WeaponDef> = {
     statBonus: { shock: 2 },
     requiredResources: ['iron_ore'],
     techRequired: null,
-    designBudget: 2,
     productionCost: 2,
     goldCostPerItem: 2,
   },
@@ -83,7 +79,6 @@ export const WEAPONS: Record<WeaponType, WeaponDef> = {
     statBonus: { shock: 2, fire: 1 },
     requiredResources: ['iron_ore'],
     techRequired: 'foundry',
-    designBudget: 2,
     productionCost: 3,
     goldCostPerItem: 4,
   },
@@ -93,7 +88,6 @@ export const WEAPONS: Record<WeaponType, WeaponDef> = {
     statBonus: { fire: 3, ap: 2 },
     requiredResources: ['iron_ore', 'sulphur'],
     techRequired: 'firearms',
-    designBudget: 2,
     productionCost: 5,
     goldCostPerItem: 5,
   },
@@ -105,7 +99,7 @@ export const WEAPONS: Record<WeaponType, WeaponDef> = {
     statBonus: { shock: 3 },
     requiredResources: ['iron_ore'],
     techRequired: 'foundry',
-    designBudget: 2,
+
     productionCost: 3,
     goldCostPerItem: 4,
   },
@@ -115,7 +109,7 @@ export const WEAPONS: Record<WeaponType, WeaponDef> = {
     statBonus: { shock: 2, defence: 2 },
     requiredResources: ['wood', 'iron_ore'],
     techRequired: null,
-    designBudget: 3,
+
     productionCost: 2,
     goldCostPerItem: 3,
   },
@@ -127,7 +121,7 @@ export const WEAPONS: Record<WeaponType, WeaponDef> = {
     statBonus: { shock: 5, ap: 1 },
     requiredResources: ['iron_ore'],
     techRequired: null,
-    designBudget: 3,
+
     productionCost: 2,
     goldCostPerItem: 3,
   },
@@ -137,7 +131,7 @@ export const WEAPONS: Record<WeaponType, WeaponDef> = {
     statBonus: { shock: 3, defence: 3 },
     requiredResources: ['iron_ore', 'wood'],
     techRequired: null,
-    designBudget: 3,
+
     productionCost: 2,
     goldCostPerItem: 3,
   },
@@ -147,7 +141,7 @@ export const WEAPONS: Record<WeaponType, WeaponDef> = {
     statBonus: { fire: 6, ap: 1 },
     requiredResources: ['wood'],
     techRequired: null,
-    designBudget: 3,
+
     productionCost: 2,
     goldCostPerItem: 2,
   },
@@ -157,7 +151,7 @@ export const WEAPONS: Record<WeaponType, WeaponDef> = {
     statBonus: { fire: 7, ap: 3 },
     requiredResources: ['iron_ore', 'sulphur'],
     techRequired: 'alchemy',
-    designBudget: 4,
+
     productionCost: 5,
     goldCostPerItem: 8,
   },
@@ -167,7 +161,7 @@ export const WEAPONS: Record<WeaponType, WeaponDef> = {
     statBonus: { fire: 9, ap: 5 },
     requiredResources: ['iron_ore', 'sulphur'],
     techRequired: 'firearms',
-    designBudget: 4,
+
     productionCost: 10,
     goldCostPerItem: 15,
   },

@@ -6,7 +6,7 @@ import {
   HORSE_BREEDS, GRYPHON_BREEDS, RANGED_WEAPONS,
   computeUnitStats, MEN_PER_COMPANY, MEN_PER_SQUADRON,
   STATE_DICE_MULTIPLIER,
-  type UnitTemplate, type WeaponDesign, type TroopCounts,
+  type UnitTemplate, type TroopCounts,
   type WeaponType, type ShieldType, type ArmourType, type MountType,
 } from '@kingdoms/shared';
 import { Tooltip } from '../shared/Tooltip.js';
@@ -41,12 +41,8 @@ const STATE_LABELS: Record<string, { label: string; color: string }> = {
 
 function getEquipmentLabel(
   slotType: WeaponType | ShieldType | ArmourType | MountType | null,
-  designId: string | null | undefined,
-  weaponDesigns: WeaponDesign[],
 ): string {
   if (!slotType) return '—';
-  const design = designId ? weaponDesigns.find(d => d.id === designId) : null;
-  if (design) return `${design.name} (${fmt(slotType)})`;
   return fmt(slotType);
 }
 
@@ -72,7 +68,6 @@ export function ArmyDetailPanel() {
   const players = useStore(s => s.players);
   const player = useStore(s => s.player) as Record<string, unknown> | null;
   const unitTemplates = useStore(s => s.unitTemplates) as UnitTemplate[];
-  const weaponDesigns = useStore(s => s.weaponDesigns) as WeaponDesign[];
   const nobles = useStore(s => s.nobles) as any[] | undefined;
   const selectedArmyId = useStore(s => s.selectedArmyId);
   const setSelectedArmyId = useStore(s => s.setSelectedArmyId);
@@ -193,7 +188,7 @@ export function ArmyDetailPanel() {
       )}
 
       {units.map((u: any) => (
-        <ArmyPanelUnitCard key={u.id} unit={u} templates={unitTemplates} weaponDesigns={weaponDesigns} nobles={nobles} />
+        <ArmyPanelUnitCard key={u.id} unit={u} templates={unitTemplates} nobles={nobles} />
       ))}
     </div>
   );
@@ -201,10 +196,9 @@ export function ArmyDetailPanel() {
 
 // ─── Unit Card (within army panel) ────────────────────────────────────────
 
-function ArmyPanelUnitCard({ unit, templates, weaponDesigns, nobles }: {
+function ArmyPanelUnitCard({ unit, templates, nobles }: {
   unit: any;
   templates: UnitTemplate[];
-  weaponDesigns: WeaponDesign[];
   nobles: any[] | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -218,7 +212,7 @@ function ArmyPanelUnitCard({ unit, templates, weaponDesigns, nobles }: {
   const pct = maxTroops > 0 ? Math.round((total / maxTroops) * 100) : 0;
   const stateInfo = STATE_LABELS[unit.state] ?? STATE_LABELS.full;
   const diceMultiplier = STATE_DICE_MULTIPLIER[unit.state] ?? 1;
-  const stats = tmpl ? computeUnitStats(tmpl, weaponDesigns) : null;
+  const stats = tmpl ? computeUnitStats(tmpl) : null;
   const displayName = unit.name || tmpl?.name || 'Unknown Unit';
   const officer = nobles?.find((n: any) => n.assignmentType === 'unit_ic' && n.assignedEntityId === unit.id);
 
@@ -228,17 +222,17 @@ function ArmyPanelUnitCard({ unit, templates, weaponDesigns, nobles }: {
   const equipRows: Array<{ label: string; held: number; required: number; icon: string }> = [];
   if (tmpl && !tmpl.isIrregular) {
     if (tmpl.primary) {
-      equipRows.push({ label: getEquipmentLabel(tmpl.primary, tmpl.primaryDesignId, weaponDesigns), held: held.primary, required: maxTroops, icon: '⚔' });
+      equipRows.push({ label: getEquipmentLabel(tmpl.primary), held: held.primary, required: maxTroops, icon: '⚔' });
     }
     if ((tmpl as any).secondary) {
       equipRows.push({
-        label: getEquipmentLabel((tmpl as any).secondary, (tmpl as any).secondaryDesignId, weaponDesigns),
+        label: getEquipmentLabel((tmpl as any).secondary),
         held: held.secondary, required: maxTroops,
         icon: (SHIELDS as any)[(tmpl as any).secondary] ? '🛡' : '⚔',
       });
     }
     if (tmpl.sidearm) {
-      equipRows.push({ label: getEquipmentLabel(tmpl.sidearm, tmpl.sidearmDesignId, weaponDesigns), held: held.sidearm, required: maxTroops, icon: '🗡' });
+      equipRows.push({ label: getEquipmentLabel(tmpl.sidearm), held: held.sidearm, required: maxTroops, icon: '🗡' });
     }
     if (tmpl.armour) {
       equipRows.push({ label: fmt(tmpl.armour), held: held.armour, required: maxTroops, icon: '🛡' });

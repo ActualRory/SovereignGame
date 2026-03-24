@@ -18,9 +18,6 @@ export interface CreateTemplateOrder {
   sidearm: WeaponType | null;
   armour: ArmourType | null;
   mount: MountType | null;
-  primaryDesignId: string | null;
-  secondaryDesignId: string | null;
-  sidearmDesignId: string | null;
 }
 
 export interface UpdateTemplateOrder {
@@ -38,17 +35,6 @@ export interface PlaceEquipmentOrderOrder {
   settlementId: string;
   equipmentType: string;
   quantity: number;
-  /** Optional weapon design variant. Display/tracking only. */
-  designId?: string;
-  /** Design name for display. */
-  designName?: string;
-}
-
-export interface CreateWeaponDesignOrder {
-  baseWeapon: WeaponType | ShieldType;
-  name: string;
-  statModifiers: Partial<{ fire: number; shock: number; defence: number; morale: number; ap: number; armour: number }>;
-  goldCost?: number;
 }
 
 export interface DraftOrder {
@@ -77,8 +63,6 @@ export interface PendingOrders {
   createTemplates: CreateTemplateOrder[];
   updateTemplates: UpdateTemplateOrder[];
   deleteTemplates: string[];
-  createWeaponDesigns: CreateWeaponDesignOrder[];
-  retireWeaponDesigns: string[];
   draftRecruits: DraftOrder[];
   dismissRecruits: DraftOrder[];
   draftMounts: DraftMountsOrder[];
@@ -118,8 +102,6 @@ const defaultOrders = (taxRate = 'low'): PendingOrders => ({
   createTemplates: [],
   updateTemplates: [],
   deleteTemplates: [],
-  createWeaponDesigns: [],
-  retireWeaponDesigns: [],
   draftRecruits: [],
   dismissRecruits: [],
   draftMounts: [],

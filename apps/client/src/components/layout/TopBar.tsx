@@ -82,8 +82,6 @@ export function TopBar() {
         createTemplates: pendingOrders.createTemplates,
         updateTemplates: pendingOrders.updateTemplates,
         deleteTemplates: pendingOrders.deleteTemplates,
-        createWeaponDesigns: pendingOrders.createWeaponDesigns,
-        retireWeaponDesigns: pendingOrders.retireWeaponDesigns,
         draftRecruits: pendingOrders.draftRecruits,
         dismissRecruits: pendingOrders.dismissRecruits,
         draftMounts: pendingOrders.draftMounts,

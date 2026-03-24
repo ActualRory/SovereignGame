@@ -22,7 +22,6 @@ import {
   calculateStabilityTurn, resolveWinterRoll, WINTER_ROLL_BONUS,
   getStabilityBand,
   getBaseStats, getDefaultPosition, MEN_PER_COMPANY, MEN_PER_SQUADRON,
-  WEAPON_DESIGN_DEVELOP_TURNS,
   WEAPONS, SHIELDS, ARMOUR_TYPES, WORKSHOP_POINTS_PER_TURN,
   computeUnitStats,
   type CombatInput, type ArmySide, type CombatUnitInput, type CombatResult,
@@ -31,7 +30,7 @@ import {
   type TerrainType, type UnitState, type UnitPosition,
   type HexDirection, type Season, type StabilityEventType,
   type WeaponType, type ShieldType, type ArmourType, type MountType,
-  type UnitTemplate, type WeaponDesign, type TroopCounts,
+  type UnitTemplate, type TroopCounts,
   UNILATERAL_ATTACHMENTS, type LetterAttachment,
 } from '@kingdoms/shared';
 import { processAttachmentEffect } from './attachment-effects.js';
@@ -669,75 +668,6 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         ));
     }
 
-    // ── Create weapon designs (costs gold, enters developing phase) ──
-    for (const designOrder of (orders.createWeaponDesigns ?? [])) {
-      const playerRow = updatedPlayers.find(p => p.id === player.id);
-      if (!playerRow) continue;
-
-      // Recalculate design cost server-side
-      const baseDef = WEAPONS[designOrder.baseWeapon as WeaponType] ?? SHIELDS[designOrder.baseWeapon as ShieldType];
-      const productionCost = baseDef?.productionCost ?? 2;
-      const budgetUsed = Object.values(designOrder.statModifiers ?? {}).reduce((s, v) => s + Math.max(0, v ?? 0), 0);
-      const designCost = Math.round(productionCost * 50 + budgetUsed * 75);
-
-      if (playerRow.gold < designCost) continue;
-
-      await db.update(schema.players)
-        .set({ gold: playerRow.gold - designCost })
-        .where(eq(schema.players.id, player.id));
-
-      await db.insert(schema.weaponDesigns).values({
-        gameId,
-        playerId: player.id,
-        baseWeapon: designOrder.baseWeapon,
-        name: designOrder.name,
-        statModifiers: designOrder.statModifiers as Record<string, number>,
-        costModifier: 0,
-        status: 'developing',
-        turnsRemaining: WEAPON_DESIGN_DEVELOP_TURNS,
-      });
-
-      events.push({
-        type: 'weapon_design_started',
-        description: `${player.countryName} is developing ${designOrder.name}`,
-        playerIds: [player.id],
-      });
-    }
-
-    // ── Retire weapon designs ──
-    for (const retireOrder of (orders.retireWeaponDesigns ?? [])) {
-      await db.update(schema.weaponDesigns)
-        .set({ status: 'retired' })
-        .where(and(
-          eq(schema.weaponDesigns.id, retireOrder.designId),
-          eq(schema.weaponDesigns.playerId, player.id),
-        ));
-    }
-  }
-
-  // ── Tick weapon design development ──
-  const allDesigns = await db.select().from(schema.weaponDesigns)
-    .where(eq(schema.weaponDesigns.gameId, gameId));
-  for (const design of allDesigns) {
-    if (design.status !== 'developing') continue;
-    const newTurns = design.turnsRemaining - 1;
-    if (newTurns <= 0) {
-      await db.update(schema.weaponDesigns)
-        .set({ status: 'ready', turnsRemaining: 0 })
-        .where(eq(schema.weaponDesigns.id, design.id));
-      const designPlayer = activePlayers.find(p => p.id === design.playerId);
-      if (designPlayer) {
-        events.push({
-          type: 'weapon_design_ready',
-          description: `${design.name} design is ready`,
-          playerIds: [designPlayer.id],
-        });
-      }
-    } else {
-      await db.update(schema.weaponDesigns)
-        .set({ turnsRemaining: newTurns })
-        .where(eq(schema.weaponDesigns.id, design.id));
-    }
   }
 
   // ══════════════════════════════════════════════
@@ -1172,7 +1102,6 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         settlementId: eqOrder.settlementId,
         playerId: player.id,
         equipmentType: eqOrder.equipmentType,
-        designId: eqOrder.designId ?? null,
         quantityOrdered: eqOrder.quantity,
         quantityFulfilled: 0,
         status: 'active',
@@ -1680,9 +1609,6 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
   const allTemplates = await db.select().from(schema.unitTemplates)
     .where(eq(schema.unitTemplates.gameId, gameId));
 
-  const allWeaponDesigns = await db.select().from(schema.weaponDesigns)
-    .where(eq(schema.weaponDesigns.gameId, gameId));
-
   const playerNames = new Map(activePlayers.map(p => [p.id, p.countryName as string]));
 
   // Run step-by-step movement with border enforcement and mid-path combat
@@ -1719,7 +1645,6 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
     nobles: noblesById as any,
     unitsByArmy: unitsByArmy as any,
     templates: allTemplates as any,
-    weaponDesigns: allWeaponDesigns as any,
     playerNames,
   });
 
@@ -1930,9 +1855,6 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
       // Build CombatUnitInput from new military format (templates + troopCounts)
       const allSiegeTemplates = await db.select().from(schema.unitTemplates)
         .where(eq(schema.unitTemplates.gameId, gameId));
-      const allSiegeWeaponDesigns = await db.select().from(schema.weaponDesigns)
-        .where(eq(schema.weaponDesigns.gameId, gameId));
-
       function buildSiegeCombatUnit(u: typeof activeAtkUnits[0]): CombatUnitInput | null {
         const tmpl = allSiegeTemplates.find(t => t.id === u.templateId) as UnitTemplate | undefined;
         if (!tmpl) return null;
@@ -1940,7 +1862,7 @@ export async function resolveTurn(gameId: string, turnNumber: number): Promise<T
         const maxTroops = tmpl.isMounted
           ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON
           : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
-        const stats = computeUnitStats(tmpl as UnitTemplate, allSiegeWeaponDesigns as unknown as WeaponDesign[]);
+        const stats = computeUnitStats(tmpl as UnitTemplate);
         return {
           id: u.id,
           templateId: tmpl.id,

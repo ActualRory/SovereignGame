@@ -38,54 +38,8 @@ export interface UnitTemplate {
   armour: ArmourType | null;
   /** Optional mount type. Only valid when isMounted = true. */
   mount: MountType | null;
-  /** Active weapon design for the primary slot. */
-  primaryDesignId: string | null;
-  /** Active weapon/shield design for the secondary slot. */
-  secondaryDesignId: string | null;
-  /** Active weapon design for the sidearm slot. */
-  sidearmDesignId: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-// ── Weapon Design ──
-
-export type WeaponDesignStatus = 'developing' | 'ready' | 'retired';
-
-/**
- * A named variant of an unlocked base weapon with bounded stat tradeoffs.
- *
- * Creating a design requires a gold cost and a development phase (turnsRemaining > 0).
- * During development the design is not yet usable. This prevents spamming designs.
- * There is no building requirement — any player can design weapons they have unlocked.
- */
-export interface WeaponDesign {
-  id: string;
-  gameId: string;
-  playerId: string;
-  /** The base weapon or shield this design modifies. */
-  baseWeapon: WeaponType | ShieldType;
-  /** Player-chosen name, e.g. "Light Rifle" or "Heavy Crossbow". */
-  name: string;
-  /** Stat modifications applied on top of the base weapon's stats. Values sum to zero. */
-  statModifiers: Partial<{
-    fire: number;
-    shock: number;
-    defence: number;
-    morale: number;
-    ap: number;
-    armour: number;
-  }>;
-  /**
-   * Production cost multiplier adjustment. Range: -0.3 to +0.3.
-   * Negative = cheaper, positive = more expensive.
-   */
-  costModifier: number;
-  /** Status: 'developing' until turnsRemaining reaches 0, then 'ready'. */
-  status: WeaponDesignStatus;
-  /** Turns remaining in the development phase. 0 = ready to use. */
-  turnsRemaining: number;
-  createdAt: string;
 }
 
 // ── Troop Composition ──

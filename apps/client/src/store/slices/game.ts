@@ -25,7 +25,6 @@ export interface GameState {
   notifications: GameNotification[];
   eventLog: Record<string, unknown>[];
   unitTemplates: Record<string, unknown>[];
-  weaponDesigns: Record<string, unknown>[];
   equipmentOrders: Record<string, unknown>[];
   nobles: Record<string, unknown>[];
   nobleFamilies: Record<string, unknown>[];
@@ -56,7 +55,6 @@ const initialState: GameState = {
   notifications: [],
   eventLog: [],
   unitTemplates: [],
-  weaponDesigns: [],
   equipmentOrders: [],
   nobles: [],
   nobleFamilies: [],

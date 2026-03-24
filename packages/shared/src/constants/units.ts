@@ -161,8 +161,3 @@ export const COMBAT_PROMOTION_RATE = {
 
 // ── Weapon Design ──
 
-/** Gold cost to initiate a new weapon design. Prevents design spamming. */
-export const WEAPON_DESIGN_COST = 500;
-
-/** Turns the design spends in 'developing' before becoming 'ready'. */
-export const WEAPON_DESIGN_DEVELOP_TURNS = 2;

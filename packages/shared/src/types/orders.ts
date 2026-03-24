@@ -28,10 +28,6 @@ export interface TurnOrders {
   updateTemplates: UpdateUnitTemplateOrder[];
   deleteTemplates: DeleteUnitTemplateOrder[];
 
-  // Military — weapon designs
-  createWeaponDesigns: CreateWeaponDesignOrder[];
-  retireWeaponDesigns: RetireWeaponDesignOrder[];
-
   // Military — draft & dismiss
   draftRecruits: DraftRecruitsOrder[];
   dismissRecruits: DismissRecruitsOrder[];
@@ -91,9 +87,6 @@ export interface CreateUnitTemplateOrder {
   sidearm: WeaponType | null;
   armour: ArmourType | null;
   mount: MountType | null;
-  primaryDesignId: string | null;
-  secondaryDesignId: string | null;
-  sidearmDesignId: string | null;
 }
 
 export interface UpdateUnitTemplateOrder {
@@ -103,21 +96,6 @@ export interface UpdateUnitTemplateOrder {
 
 export interface DeleteUnitTemplateOrder {
   templateId: string;
-}
-
-// ── Weapon Designs ──
-
-export interface CreateWeaponDesignOrder {
-  baseWeapon: WeaponType | ShieldType;
-  name: string;
-  statModifiers: Partial<{
-    fire: number; shock: number; defence: number;
-    morale: number; ap: number; armour: number;
-  }>;
-}
-
-export interface RetireWeaponDesignOrder {
-  designId: string;
 }
 
 // ── Draft & Dismiss ──
@@ -192,8 +170,6 @@ export interface PlaceEquipmentOrder {
   equipmentType: ResourceType;
   quantity: number;
   priority: EquipmentOrderPriority;
-  /** Optional weapon design variant being produced. Display/tracking only — base type goes to storage. */
-  designId?: string;
 }
 
 export interface CancelEquipmentOrderOrder {
@@ -265,8 +241,6 @@ export function emptyOrders(currentTaxRate: TaxRate): TurnOrders {
     createTemplates: [],
     updateTemplates: [],
     deleteTemplates: [],
-    createWeaponDesigns: [],
-    retireWeaponDesigns: [],
     draftRecruits: [],
     dismissRecruits: [],
     draftMounts: [],

@@ -14,7 +14,7 @@ import {
   getDefaultPosition, MEN_PER_COMPANY, MEN_PER_SQUADRON,
   type CombatInput, type CombatUnitInput, type CombatResult,
   type TerrainType, type HexDirection, type UnitState, type UnitPosition,
-  type UnitTemplate, type WeaponDesign, type TroopCounts,
+  type UnitTemplate, type TroopCounts,
   type DiplomacyRelation,
   type MovementLog, type MovementStep, type MovementCombatEvent,
   type Noble,
@@ -104,14 +104,12 @@ export function resolveMovementStepByStep(opts: {
   unitsByArmy: Map<string, UnitForCombat[]>;
   /** All unit templates for the game */
   templates: UnitTemplate[];
-  /** All weapon designs for the game */
-  weaponDesigns: WeaponDesign[];
   /** Map of playerId -> countryName for event descriptions */
   playerNames: Map<string, string>;
 }): MovementResult {
   const {
     gameId, turnNumber, armies, hexData, relations,
-    nobles, unitsByArmy, templates, weaponDesigns, playerNames,
+    nobles, unitsByArmy, templates, playerNames,
   } = opts;
 
   // Build lookup maps
@@ -279,7 +277,7 @@ export function resolveMovementStepByStep(opts: {
           const combatResult = resolveCombatBetween({
             gameId, turnNumber, hKey,
             atkArmyId, defArmyId,
-            armies, unitsByArmy, templates, weaponDesigns, nobles,
+            armies, unitsByArmy, templates, nobles,
             hexTerrainMap,
           });
 
@@ -397,11 +395,10 @@ function resolveCombatBetween(opts: {
   armies: ArmyForMovement[];
   unitsByArmy: Map<string, UnitForCombat[]>;
   templates: UnitTemplate[];
-  weaponDesigns: WeaponDesign[];
   nobles: Map<string, Noble>;
   hexTerrainMap: Map<string, TerrainType>;
 }): { result: CombatResult } | null {
-  const { gameId, turnNumber, hKey, atkArmyId, defArmyId, armies, unitsByArmy, templates, weaponDesigns, nobles, hexTerrainMap } = opts;
+  const { gameId, turnNumber, hKey, atkArmyId, defArmyId, armies, unitsByArmy, templates, nobles, hexTerrainMap } = opts;
 
   const atkUnits = (unitsByArmy.get(atkArmyId) ?? []).filter(u => u.state !== 'destroyed');
   const defUnits = (unitsByArmy.get(defArmyId) ?? []).filter(u => u.state !== 'destroyed');
@@ -415,7 +412,7 @@ function resolveCombatBetween(opts: {
     const maxTroops = tmpl.isMounted
       ? tmpl.companiesOrSquadrons * MEN_PER_SQUADRON
       : tmpl.companiesOrSquadrons * MEN_PER_COMPANY;
-    const stats = computeUnitStats(tmpl, weaponDesigns);
+    const stats = computeUnitStats(tmpl);
     return {
       id: u.id,
       templateId: tmpl.id,

@@ -242,7 +242,7 @@ gameRouter.get('/:slug/state', async (req, res) => {
   }
 
   // Fetch all game data
-  const [gamePlayers, hexes, allSettlements, allArmies, allTechProgress, allRelations, allLetters, allTrades, allTemplates, allDesigns, allEquipmentOrders, allNobles, allNobleFamilies] = await Promise.all([
+  const [gamePlayers, hexes, allSettlements, allArmies, allTechProgress, allRelations, allLetters, allTrades, allTemplates, allEquipmentOrders, allNobles, allNobleFamilies] = await Promise.all([
     db.select().from(schema.players).where(eq(schema.players.gameId, game.id)),
     db.select().from(schema.gameHexes).where(eq(schema.gameHexes.gameId, game.id)),
     db.select().from(schema.settlements).where(eq(schema.settlements.gameId, game.id)),
@@ -252,7 +252,6 @@ gameRouter.get('/:slug/state', async (req, res) => {
     db.select().from(schema.letters).where(eq(schema.letters.gameId, game.id)),
     db.select().from(schema.tradeAgreements).where(eq(schema.tradeAgreements.gameId, game.id)),
     db.select().from(schema.unitTemplates).where(eq(schema.unitTemplates.gameId, game.id)),
-    db.select().from(schema.weaponDesigns).where(eq(schema.weaponDesigns.gameId, game.id)),
     db.select().from(schema.equipmentOrders).where(eq(schema.equipmentOrders.gameId, game.id)),
     db.select().from(schema.nobles).where(eq(schema.nobles.gameId, game.id)),
     db.select().from(schema.nobleFamilies).where(eq(schema.nobleFamilies.gameId, game.id)),
@@ -315,7 +314,6 @@ gameRouter.get('/:slug/state', async (req, res) => {
     t.playerAId === player.id || t.playerBId === player.id
   );
   const myTemplates = allTemplates.filter(t => t.playerId === player.id);
-  const myDesigns = allDesigns.filter(d => d.playerId === player.id);
   const myEquipmentOrders = allEquipmentOrders.filter(o => o.playerId === player.id);
   // Nobles: own nobles + nobles held prisoner by this player
   const myNobles = allNobles.filter(n => n.ownerId === player.id || n.captorPlayerId === player.id);
@@ -403,7 +401,7 @@ gameRouter.get('/:slug/state', async (req, res) => {
 
   try {
     const filtered = await buildFilteredState(game.id, player.id, rawState);
-    res.json({ ...filtered, combatLogs: latestCombatLogs, eventLog: latestEventLog, movementLog: latestMovementLog, techProgress: myTech, letters: myLetters, diplomacyRelations: myRelations, tradeAgreements: myTrades, unitTemplates: myTemplates, weaponDesigns: myDesigns, equipmentOrders: myEquipmentOrders, nobles: myNobles, nobleFamilies: myFamilies });
+    res.json({ ...filtered, combatLogs: latestCombatLogs, eventLog: latestEventLog, movementLog: latestMovementLog, techProgress: myTech, letters: myLetters, diplomacyRelations: myRelations, tradeAgreements: myTrades, unitTemplates: myTemplates, equipmentOrders: myEquipmentOrders, nobles: myNobles, nobleFamilies: myFamilies });
   } catch (err) {
     console.error('Fog filter error:', err);
     res.json({
@@ -422,7 +420,6 @@ gameRouter.get('/:slug/state', async (req, res) => {
       diplomacyRelations: myRelations,
       tradeAgreements: myTrades,
       unitTemplates: myTemplates,
-      weaponDesigns: myDesigns,
       equipmentOrders: myEquipmentOrders,
       nobles: myNobles,
       nobleFamilies: myFamilies,

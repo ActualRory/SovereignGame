@@ -7,9 +7,11 @@ import {
   HORSE_BREEDS, GRYPHON_BREEDS, RANGED_WEAPONS,
   computeUnitStats, MEN_PER_COMPANY, MEN_PER_SQUADRON,
   canGoInSecondary, canGoInSidearm, secondarySlotAllowed,
+  calculateFoodConsumption,
   type ShipType, type UnitTemplate, type WeaponDesign, type TroopCounts,
   type WeaponType, type ShieldType, type ArmourType, type MountType, type MountBreed,
   type WeaponDef, type ShieldDef,
+  type BuildingType,
 } from '@kingdoms/shared';
 import { Tooltip } from '../shared/Tooltip.js';
 import type { RecruitFromTemplateOrder, CreateTemplateOrder, UpdateTemplateOrder } from '../../store/slices/orders.js';
@@ -1342,6 +1344,9 @@ function StockpileTab({ settlements, pendingOrders, onSettlementClick }: {
     draftedHorses: 0,
     draftedGryphons: 0,
     draftedDemigryphs: 0,
+    totalFoodStored: 0,
+    totalFoodProduction: 0,
+    totalFoodConsumption: 0,
   };
   const aggregateStorage: Record<string, number> = {};
   const perSettlement: Record<string, Record<string, number>> = {};
@@ -1357,6 +1362,20 @@ function StockpileTab({ settlements, pendingOrders, onSettlementClick }: {
 
     const storage = (s.storage ?? {}) as Record<string, number>;
     perSettlement[s.id] = storage;
+    totals.totalFoodStored += storage.food ?? 0;
+    totals.totalFoodConsumption += calculateFoodConsumption(s.population ?? 0);
+
+    // Estimate food production from completed farms/fisheries
+    const buildings = (s.buildings ?? []) as any[];
+    const popScale = (s.popCap ?? 0) > 0 ? Math.min(1, (s.population ?? 0) / s.popCap) : 0;
+    for (const b of buildings) {
+      if (b.isConstructing) continue;
+      const def = BUILDINGS[b.type as BuildingType];
+      if (def?.output?.food) {
+        totals.totalFoodProduction += Math.floor(def.output.food * popScale);
+      }
+    }
+
     for (const [key, val] of Object.entries(storage)) {
       if (val > 0) aggregateStorage[key] = (aggregateStorage[key] ?? 0) + val;
     }
@@ -1403,6 +1422,40 @@ function StockpileTab({ settlements, pendingOrders, onSettlementClick }: {
           <span className="stat-label">Max Draftable</span>
           <span className="stat-detail">{totals.maxDraftable.toLocaleString()}</span>
         </div>
+      </div>
+
+      {/* ── Food ── */}
+      <h3>Food Supply</h3>
+      <div className="stat-grid" style={{ marginBottom: 16 }}>
+        <div className="stat-box">
+          <span className="stat-label">Food Stored</span>
+          <span className="stat-detail">{totals.totalFoodStored.toLocaleString()}</span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-label">Production</span>
+          <span className="stat-detail" style={{ color: 'var(--accent-green)' }}>+{totals.totalFoodProduction}/turn</span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-label">Consumption</span>
+          <span className="stat-detail" style={{ color: 'var(--accent-red)' }}>-{totals.totalFoodConsumption}/turn</span>
+        </div>
+        <Tooltip content={
+          totals.totalFoodProduction - totals.totalFoodConsumption < 0 && totals.totalFoodStored > 0
+            ? <span>~{Math.ceil(totals.totalFoodStored / (totals.totalFoodConsumption - totals.totalFoodProduction))} turns of reserves remain</span>
+            : totals.totalFoodProduction - totals.totalFoodConsumption >= 0
+              ? <span>Food supply is stable</span>
+              : <span>Famine is active — build farms!</span>
+        }>
+          <div className="stat-box" style={{ cursor: 'help' }}>
+            <span className="stat-label">Net Balance</span>
+            <span className="stat-detail" style={{
+              color: totals.totalFoodProduction - totals.totalFoodConsumption >= 0 ? 'var(--accent-green)' : 'var(--accent-red)',
+            }}>
+              {totals.totalFoodProduction - totals.totalFoodConsumption >= 0 ? '+' : ''}
+              {totals.totalFoodProduction - totals.totalFoodConsumption}/turn
+            </span>
+          </div>
+        </Tooltip>
       </div>
 
       {/* ── Mounts ── */}

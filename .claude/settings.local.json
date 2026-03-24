@@ -32,7 +32,8 @@
       "Bash(grep -n \"countryName\\\\|rulerName\" '/c/Users/Rory/Kingdoms Game/apps/server/src'/**/*.ts)",
       "Bash(npx vite:*)",
       "Bash(cd /c/Users/Rory/\"Kingdoms Game\")",
-      "Bash(pnpm exec:*)"
+      "Bash(pnpm exec:*)",
+      "Bash(grep -r \"initialStorage\\\\|starting.*storage\\\\|storage.*farm\" '/c/Users/Rory/Kingdoms Game/apps/server/src/db' --include=*.ts)"
     ]
   }
 }

@@ -211,10 +211,29 @@ export function SettlementDetailPanel() {
             </span>
           </div>
           <div className="sv-stat-row">
+            <span>Food Stored</span>
+            <span className="sv-stat-value">{storage.food ?? 0}</span>
+          </div>
+          <div className="sv-stat-row">
             <span>Food Balance</span>
-            <span className="sv-stat-value" style={{ color: foodProduction - foodConsumption >= 0 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-              {foodProduction - foodConsumption >= 0 ? '+' : ''}{foodProduction - foodConsumption}/turn
-            </span>
+            <Tooltip content={
+              <div style={{ fontSize: 11 }}>
+                <div>Production: +{foodProduction}/turn</div>
+                <div>Consumption: -{foodConsumption}/turn</div>
+                {foodProduction - foodConsumption < 0 && (storage.food ?? 0) > 0 && (
+                  <div style={{ marginTop: 4, color: 'var(--accent-gold)' }}>
+                    ~{Math.ceil((storage.food ?? 0) / (foodConsumption - foodProduction))} turns until famine
+                  </div>
+                )}
+              </div>
+            }>
+              <span className="sv-stat-value" style={{
+                color: foodProduction - foodConsumption >= 0 ? 'var(--accent-green)' : 'var(--accent-red)',
+                cursor: 'help',
+              }}>
+                {foodProduction - foodConsumption >= 0 ? '+' : ''}{foodProduction - foodConsumption}/turn
+              </span>
+            </Tooltip>
           </div>
           <div className="sv-stat-row">
             <span>Storage</span>

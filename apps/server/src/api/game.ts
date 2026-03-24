@@ -118,7 +118,7 @@ gameRouter.post('/:slug/start', async (req, res) => {
           population: startPop,
           popCap: SETTLEMENT_TIERS[startTier].popCap,
           isCapital: true,
-          storage: {},
+          storage: { food: STARTING_CONDITIONS.startingFood },
         }).returning();
 
         // Link settlement to hex

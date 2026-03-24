@@ -46,9 +46,14 @@ export function calculatePopGrowth(
   return Math.max(0, growth);
 }
 
+/** Maximum fraction of population that can starve in a single turn. */
+const MAX_STARVATION_RATE = 0.05;
+
 /**
  * Calculate population loss from food shortage.
  * If food consumption exceeds available food, population starves.
+ * Loss scales with deficit severity but is capped at 5% of population per turn
+ * so famine is a slow drain players can react to, not an instant catastrophe.
  */
 export function calculateStarvation(
   currentPop: number,
@@ -56,7 +61,8 @@ export function calculateStarvation(
 ): number {
   if (foodDeficit >= 0) return 0; // no deficit
 
-  // Lose 5% of population per unit of deficit
-  const loss = Math.ceil(currentPop * 0.01 * Math.abs(foodDeficit));
-  return Math.min(loss, currentPop); // can't lose more than total
+  // Scale: lose 1% of population per unit of deficit, capped at 5%
+  const uncapped = currentPop * 0.01 * Math.abs(foodDeficit);
+  const maxLoss = currentPop * MAX_STARVATION_RATE;
+  return Math.min(Math.ceil(Math.min(uncapped, maxLoss)), currentPop);
 }

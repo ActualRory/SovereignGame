@@ -21,6 +21,8 @@ export const STARTING_CONDITIONS = {
   units: [
     { count: 2 },
   ],
+  /** Starting food reserve — enough for ~5 turns while players build farms. */
+  startingFood: 300,
   /** Starting stability. */
   stability: 100,
   /** Default tax rate. */
